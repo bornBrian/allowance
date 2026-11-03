@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# local database
+data/*.db
+data/*.db-*
+
+# private working notes
+CLAUDE.md
+
+# written by next dev for AI coding tools
+AGENTS.md
