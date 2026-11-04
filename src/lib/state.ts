@@ -21,7 +21,13 @@ export interface AppState {
   rulesText: string | null; // the payer's own words; only the payer sees them
   rulesSummary: string[];
   remaining: Remaining[];
-  paypal: { linked: boolean; email: string | null; clientId: string | null };
+  paypal: {
+    linked: boolean;
+    email: string | null;
+    clientId: string | null;
+    // A PayPal sandbox buyer for judges and testers to log in with. Sandbox only: no real money.
+    testBuyer: { email: string; password: string } | null;
+  };
   humanCheck: { siteKey: string; needed: true } | { siteKey: null; needed: false };
   spentThisMonthCents: number; // everything paid this calendar month (UTC), for this person
   purchases: Purchase[];
@@ -78,6 +84,7 @@ export function appState(actor: Actor): AppState {
       linked: Boolean(wallet.paypalTokenId),
       email: member ? null : wallet.paypalEmail,
       clientId: member ? null : paypalClientId(),
+      testBuyer: member ? null : testBuyer(),
     },
     humanCheck: humanCheck(actor),
     spentThisMonthCents,
@@ -85,6 +92,12 @@ export function appState(actor: Actor): AppState {
     members: member ? [] : listMembers(wallet.id).map((m) => ({ id: m.id, name: m.name })),
     pushKey: member ? null : vapidPublicKey(),
   };
+}
+
+function testBuyer(): AppState["paypal"]["testBuyer"] {
+  const email = process.env.SANDBOX_BUYER_EMAIL;
+  const password = process.env.SANDBOX_BUYER_PASSWORD;
+  return email && password ? { email, password } : null;
 }
 
 function humanCheck({ wallet }: Actor): AppState["humanCheck"] {

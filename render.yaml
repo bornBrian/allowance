@@ -46,3 +46,7 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         sync: false
+      - key: SANDBOX_BUYER_EMAIL
+        sync: false
+      - key: SANDBOX_BUYER_PASSWORD
+        sync: false
