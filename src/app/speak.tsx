@@ -39,12 +39,16 @@ export function Speak({
   value,
   onChange,
   disabled,
-  className = "quiet",
+  className = "light",
+  idle = "Speak",
+  active = "Stop",
 }: {
   value: string;
   onChange: (text: string) => void;
   disabled?: boolean;
   className?: string;
+  idle?: React.ReactNode; // what the button shows; an icon is fine, it has its own label
+  active?: React.ReactNode;
 }) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -107,8 +111,9 @@ export function Speak({
         onClick={listening ? stop : start}
         disabled={disabled}
         aria-pressed={listening}
+        aria-label={listening ? "Stop listening" : "Speak"}
       >
-        {listening ? "Stop" : "Speak"}
+        {listening ? active : idle}
       </button>
       {listening && <span className="speak-note">Listening…</span>}
       {problem && <span className="speak-note error">{problem}</span>}
