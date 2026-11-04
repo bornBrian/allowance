@@ -26,6 +26,7 @@ Quality goals, in priority order:
 ## 3. Context
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart TB
     person(["<b>Person</b><br/>Sets rules, asks for things,<br/>approves or declines"])
     allowance["<b>Allowance</b><br/>Web app: agent, guard,<br/>spending record"]
@@ -63,6 +64,7 @@ flowchart TB
 ### Containers
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart TB
     browser["<b>Web page</b><br/>React 19, PayPal JS SDK v6 button,<br/>Turnstile widget"]
     server["<b>Server</b><br/>Next.js 16 route handlers on Node 24"]
@@ -74,6 +76,7 @@ flowchart TB
 ### Components (inside the server)
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart LR
     routes["API routes<br/><i>app/api</i>"]
     proxy["Proxy<br/><i>proxy.ts</i><br/>CSP, same-origin"]
@@ -123,6 +126,7 @@ flowchart LR
 ### Linking PayPal
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 sequenceDiagram
     autonumber
     actor P as Person
@@ -148,6 +152,7 @@ sequenceDiagram
 ### Asking for something
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 sequenceDiagram
     autonumber
     actor P as Person
@@ -182,6 +187,7 @@ sequenceDiagram
 ### Approving a purchase that waited
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 sequenceDiagram
     autonumber
     actor P as Person
@@ -206,6 +212,7 @@ sequenceDiagram
 Planned for the hosted demo:
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart LR
     user(["Browser"]) -->|HTTPS| render["Render web service<br/>Node 24, next start"]
     render --> disk[("Render persistent disk<br/>DATABASE_PATH=/var/data/allowance.db")]
@@ -219,6 +226,7 @@ Secrets are set as Render environment variables, never in the repository. A sing
 ### Data
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 erDiagram
     WALLET ||--o{ PURCHASE : makes
     WALLET {
@@ -260,6 +268,7 @@ erDiagram
 ### Purchase lifecycle
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 stateDiagram-v2
     [*] --> paying: guard says pay
     [*] --> waiting: guard says ask
