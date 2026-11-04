@@ -264,6 +264,20 @@ export function setStatus(
   ).run(status, new Date().toISOString(), paypal?.orderId ?? null, paypal?.captureId ?? null, id);
 }
 
+export function setAmount(id: string, amountCents: number) {
+  conn().prepare("UPDATE purchases SET amount_cents = ? WHERE id = ?").run(amountCents, id);
+}
+
+// Adds a check to a purchase's record, e.g. the second price check when the person approves.
+export function addCheck(id: string, check: Check) {
+  const row = conn().prepare("SELECT checks_json FROM purchases WHERE id = ?").get(id) as unknown as
+    | { checks_json: string }
+    | undefined;
+  if (!row) return;
+  const checks = [...(JSON.parse(row.checks_json) as Check[]), check];
+  conn().prepare("UPDATE purchases SET checks_json = ? WHERE id = ?").run(JSON.stringify(checks), id);
+}
+
 // Moves a purchase out of one status only if it is still in it, so two taps
 // on "Approve" can't pay twice. Returns false if someone got there first.
 export function claimStatus(id: string, from: Status, to: Status): boolean {

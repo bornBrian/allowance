@@ -1,5 +1,7 @@
-import { claimStatus, getPurchase, setStatus } from "@/lib/db";
+import { recheck } from "@/lib/channel3";
+import { addCheck, claimStatus, getPurchase, setAmount, setStatus } from "@/lib/db";
 import { UserError } from "@/lib/errors";
+import { money } from "@/lib/guard";
 import { clientIp, failure } from "@/lib/http";
 import { limit } from "@/lib/limits";
 import { charge, refund } from "@/lib/paypal";
@@ -23,11 +25,36 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string; a
     } else if (action === "approve") {
       if (!wallet.paypalTokenId) throw new UserError("Link PayPal first.");
       if (!claimStatus(id, "waiting", "paying")) throw conflict();
+      // Time has passed since the agent asked. Look at the shop again: approving
+      // an amount is not approving a higher one.
+      const now = await recheck(purchase);
+      const changed =
+        now.inStock === false
+          ? "It's out of stock now."
+          : now.priceCents !== null && now.priceCents > purchase.amountCents
+            ? `The price went up from ${money(purchase.amountCents)} to ${money(now.priceCents)} since the agent asked.`
+            : null;
+      if (changed) {
+        addCheck(id, { label: "At approval", outcome: "block", detail: changed });
+        setStatus(id, "blocked");
+        throw new UserError(`Not paid. ${changed}`, 409);
+      }
+      // If the price came down, pay the lower one.
+      const amount = now.priceCents !== null ? Math.min(now.priceCents, purchase.amountCents) : purchase.amountCents;
+      if (amount !== purchase.amountCents) setAmount(id, amount);
+      addCheck(id, {
+        label: "At approval",
+        outcome: now.priceCents === null ? "ask" : "ok",
+        detail:
+          now.priceCents === null
+            ? "The current price couldn't be confirmed; you approved the amount shown."
+            : `Price confirmed at ${money(amount)}.`,
+      });
       try {
         const paid = await charge({
           paymentTokenId: wallet.paypalTokenId,
           purchaseId: id,
-          amountCents: purchase.amountCents,
+          amountCents: amount,
           title: purchase.title,
           shop: purchase.shop,
           url: purchase.url,
