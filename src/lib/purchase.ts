@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { recheck as channel3Recheck, type Product } from "./channel3";
+import { recheck as channel3Recheck, searchProducts, type Product } from "./channel3";
 import { addPurchase, getPurchase, paidHistory, setStatus, type Purchase, type Wallet } from "./db";
 import { cents, decide, money } from "./guard";
 import { notifyPayer, type ApprovalNotice } from "./notify";
@@ -27,18 +27,33 @@ export interface Services {
   charge: typeof paypalCharge;
   status: (text: string) => void;
   notify: (walletId: string, notice: ApprovalNotice) => Promise<void>;
+  similar: (product: Product) => Promise<{ title: string; priceCents: number }[]>;
 }
 
-const live: Services = { recheck: channel3Recheck, charge: paypalCharge, status: () => {}, notify: notifyPayer };
+// What the same kind of product costs elsewhere, searched by its name with no price limit.
+// The agent's own search may have been capped at the budget, which hides normal prices.
+async function similarProducts(product: Product) {
+  const name = product.title.split(/\s+/).slice(0, 8).join(" ");
+  const found = await searchProducts(name, null, 8).catch(() => []);
+  return found.filter((p) => p.id !== product.id).map((p) => ({ title: p.title, priceCents: p.priceCents }));
+}
+
+const live: Services = {
+  recheck: channel3Recheck,
+  charge: paypalCharge,
+  status: () => {},
+  notify: notifyPayer,
+  similar: similarProducts,
+};
 
 export async function proposePurchase(
   { wallet, request, product, category, maxPrice, why, member, compared }: PurchaseRequest,
   services: Partial<Services> = {},
 ): Promise<{ purchase: Purchase; result: string }> {
-  const { recheck, charge, status, notify } = { ...live, ...services };
+  const { recheck, charge, status, notify, similar } = { ...live, ...services };
 
   status(`Checking ${product.shop} for the current price`);
-  const checkout = await recheck(product);
+  const [checkout, elsewhere] = await Promise.all([recheck(product), similar(product)]);
 
   status("Checking your rules");
   const decision = decide({
@@ -48,7 +63,7 @@ export async function proposePurchase(
     history: paidHistory(wallet.id),
     now: new Date(),
     requestMaxCents: maxPrice ? cents(maxPrice) : null,
-    compared,
+    compared: [...(compared ?? []), ...elsewhere],
   });
 
   const id = randomUUID();

@@ -59,12 +59,27 @@ function fakes(checkout: Partial<Checkout> = {}) {
     ...checkout,
   }));
   const notify = vi.fn<Services["notify"]>(async () => {});
-  return { charge, recheck, notify };
+  const similar = vi.fn<Services["similar"]>(async () => []);
+  return { charge, recheck, notify, similar };
 }
 
 const ask = (p: Product, category = "gifts") => ({ request: "a gift for my mum", product: p, category, why: "Well rated." });
 
 describe("proposePurchase", () => {
+  it("asks instead of paying when the same kind of product costs far more elsewhere", async () => {
+    const services = fakes();
+    services.similar.mockResolvedValue([
+      { title: "Stainless Steel Garden Tool Set, 5 piece", priceCents: 13900 },
+      { title: "Garden Tool Set in Stainless Steel", priceCents: 15900 },
+      { title: "Heavy Duty Stainless Garden Tool Set", priceCents: 14900 },
+    ]);
+    const { purchase } = await proposePurchase({ wallet: wallet(), ...ask(product()) }, services);
+    expect(services.similar).toHaveBeenCalledTimes(1);
+    expect(purchase.status).toBe("waiting");
+    expect(services.charge).not.toHaveBeenCalled();
+    expect(purchase.checks.find((c) => c.label === "Price sense")?.outcome).toBe("ask");
+  });
+
   it("pays within the rules, once, for the agreed amount", async () => {
     const services = fakes();
     const { purchase, result } = await proposePurchase({ wallet: wallet(), ...ask(product()) }, services);
