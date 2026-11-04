@@ -1,0 +1,406 @@
+/* Print style shared by every Allowance document. Laid out into A4 pages by
+   Paged.js, then printed to PDF by scripts/build-docs.mjs. */
+
+:root {
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --rule: #d2d2d7;
+  --wash: #f5f5f7;
+  --accent: #0b5cad;
+}
+
+@page {
+  size: A4;
+  margin: 24mm 20mm 22mm 22mm;
+
+  @top-left {
+    content: string(doc-title);
+    font-size: 8pt;
+    color: #6e6e73;
+    vertical-align: bottom;
+    padding-bottom: 4mm;
+  }
+  @top-right {
+    content: "Allowance";
+    font-size: 8pt;
+    color: #6e6e73;
+    vertical-align: bottom;
+    padding-bottom: 4mm;
+  }
+  @bottom-left {
+    content: string(doc-foot);
+    font-size: 8pt;
+    color: #6e6e73;
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-size: 8pt;
+    color: #6e6e73;
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+}
+
+@page cover {
+  margin: 0;
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: var(--ink);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body {
+  margin: 0;
+}
+
+/* Values the running header and footer read. Kept on the cover, out of sight. */
+.running-title,
+.running-foot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  color: transparent;
+}
+.running-title { string-set: doc-title content(text); }
+.running-foot { string-set: doc-foot content(text); }
+
+/* ---------- Cover ---------- */
+
+.cover {
+  page: cover;
+  height: 297mm;
+  padding: 28mm 24mm 22mm 26mm;
+  display: flex;
+  flex-direction: column;
+  break-after: page;
+}
+
+.cover .org {
+  font-size: 9pt;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.cover .product {
+  margin-top: 70mm;
+  font-size: 40pt;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.cover .title {
+  margin-top: 6mm;
+  font-size: 19pt;
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.cover .subtitle {
+  margin-top: 3mm;
+  font-size: 10.5pt;
+  color: var(--muted);
+}
+
+.cover .rule {
+  margin-top: 14mm;
+  width: 28mm;
+  border-top: 1.5pt solid var(--ink);
+}
+
+.cover .meta {
+  margin-top: auto;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.cover .meta td {
+  padding: 1.2mm 8mm 1.2mm 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.cover .meta td:first-child {
+  color: var(--muted);
+  width: 34mm;
+}
+
+.cover .notice {
+  margin-top: 10mm;
+  font-size: 7.5pt;
+  color: var(--muted);
+  max-width: 130mm;
+}
+
+/* ---------- Front matter ---------- */
+
+.front {
+  break-after: page;
+}
+
+/* The first chapter starts its own page already. */
+.front.toc {
+  break-after: auto;
+}
+
+.front h2 {
+  font-size: 13pt;
+  font-weight: 600;
+  margin: 0 0 4mm;
+}
+
+.front h2 + * {
+  margin-top: 0;
+}
+
+.front section + section {
+  margin-top: 10mm;
+}
+
+/* Contents, with page numbers filled in by Paged.js. */
+.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  margin: 0;
+}
+
+.toc a {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 1mm 0;
+}
+
+.toc a::after {
+  content: target-counter(attr(href), page);
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.toc a .leader {
+  flex: 1;
+  border-bottom: 0.5pt dotted var(--rule);
+  transform: translateY(-1mm);
+}
+
+.toc > ol > li > a {
+  font-weight: 600;
+  margin-top: 2mm;
+}
+
+.toc ol ol a {
+  padding-left: 7mm;
+  font-size: 9.5pt;
+}
+
+/* ---------- Body ---------- */
+
+/* Section numbers, written in by document.js. */
+.num {
+  display: inline-block;
+  min-width: 10mm;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-caption b,
+figcaption b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+main h1 {
+  font-size: 16pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 5mm;
+  padding-top: 0;
+  break-before: page;
+  break-after: avoid;
+}
+
+main h2 {
+  font-size: 11.5pt;
+  font-weight: 600;
+  margin: 7mm 0 2.5mm;
+  break-after: avoid;
+}
+
+main h3 {
+  font-size: 10pt;
+  font-weight: 600;
+  margin: 5mm 0 2mm;
+  break-after: avoid;
+}
+
+p {
+  margin: 0 0 2.5mm;
+  orphans: 3;
+  widows: 3;
+}
+
+ul,
+ol {
+  margin: 0 0 3mm;
+  padding-left: 5mm;
+}
+
+li + li {
+  margin-top: 1mm;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+code {
+  font-family: Consolas, "SF Mono", Menlo, monospace;
+  font-size: 8.8pt;
+  background: var(--wash);
+  padding: 0.2mm 1mm;
+  border-radius: 1mm;
+}
+
+.lead {
+  font-size: 11pt;
+  color: var(--ink);
+}
+
+.note {
+  border-left: 1.5pt solid var(--ink);
+  padding: 1mm 0 1mm 4mm;
+  margin: 4mm 0;
+  color: var(--ink);
+}
+
+/* ---------- Tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2mm 0 2mm;
+  font-size: 8.8pt;
+  line-height: 1.4;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 1.6mm 2.5mm 1.6mm 0;
+  border-bottom: 0.5pt solid var(--rule);
+}
+
+th {
+  font-weight: 600;
+  border-bottom: 1pt solid var(--ink);
+}
+
+td.id,
+th.id {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  width: 15mm;
+}
+
+td.tag {
+  white-space: nowrap;
+}
+
+/* Requirement tables: the same columns everywhere. */
+table.req {
+  table-layout: fixed;
+}
+/* Widths on every cell, not just the header: a table continued on the next page has no header row first. */
+table.req :is(th, td):nth-child(1) { width: 14mm; }
+table.req :is(th, td):nth-child(3) { width: 15mm; }
+table.req :is(th, td):nth-child(4) { width: 13mm; }
+table.req :is(th, td):nth-child(5) { width: 15mm; }
+table.req td:nth-child(n + 3) {
+  white-space: nowrap;
+}
+
+.caption {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin: 0 0 6mm;
+}
+
+.table-caption {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin: 5mm 0 0;
+  break-after: avoid;
+}
+
+/* ---------- Figures ---------- */
+
+figure {
+  margin: 5mm 0 6mm;
+  break-inside: avoid;
+}
+
+figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+figcaption {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin-top: 3mm;
+}
+
+/* Diagram drawing style, shared by every SVG figure. */
+svg text {
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  fill: #1d1d1f;
+}
+svg .box { fill: #ffffff; stroke: #1d1d1f; stroke-width: 1; }
+svg .box-soft { fill: #f5f5f7; stroke: #c7c7cc; stroke-width: 1; }
+svg .box-dark { fill: #1d1d1f; stroke: #1d1d1f; }
+svg .on-dark { fill: #ffffff; }
+svg .name { font-size: 12px; font-weight: 600; }
+svg .detail { font-size: 10px; fill: #6e6e73; }
+svg .on-dark.detail { fill: #c7c7cc; }
+svg .label { font-size: 9.5px; fill: #3a3a3c; }
+svg .band-label { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; fill: #6e6e73; }
+svg .line { fill: none; stroke: #1d1d1f; stroke-width: 1; }
+svg .line-soft { fill: none; stroke: #8e8e93; stroke-width: 1; stroke-dasharray: 3 3; }
+svg .band { fill: #f5f5f7; }
+svg .step-no { font-size: 10px; font-weight: 600; fill: #6e6e73; }
+svg .pay { fill: #1a7f37; }
+svg .ask { fill: #9a6700; }
+svg .block { fill: #c9252d; }

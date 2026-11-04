@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Allowance — Software Requirements Specification</title>
+    <link rel="stylesheet" href="document.css" />
+    <script src="document.js"></script>
+    <script src="../../node_modules/pagedjs/dist/paged.polyfill.js"></script>
+  </head>
+  <body>
+    <!-- Cover -->
+    <section class="cover">
+      <span class="running-title">Software Requirements Specification</span>
+      <span class="running-foot">ALW-SRS · Version 1.0</span>
+      <div class="org">BRI TECHNOLOGIES</div>
+      <div class="product">Allowance</div>
+      <div class="title">Software Requirements Specification</div>
+      <div class="subtitle">Give your shopping agent an allowance, not your wallet.</div>
+      <div class="rule"></div>
+      <table class="meta">
+        <tr><td>Document</td><td>ALW-SRS</td></tr>
+        <tr><td>Version</td><td>1.0</td></tr>
+        <tr><td>Date</td><td>4 November 2026</td></tr>
+        <tr><td>Status</td><td>Baseline for review</td></tr>
+        <tr><td>Author</td><td>Born Brian, Bri Technologies</td></tr>
+        <tr><td>Structure</td><td>ISO/IEC/IEEE 29148:2018, software requirements specification</td></tr>
+      </table>
+      <p class="notice">
+        Allowance is built for the PayPal AI Hackathon 2026. All payments described in this document run in the PayPal
+        sandbox; no real money moves. Source code: github.com/bornBrian/allowance (MIT licence).
+      </p>
+    </section>
+
+    <!-- Front matter -->
+    <section class="front">
+      <section>
+        <h2>Document control</h2>
+        <table>
+          <thead>
+            <tr><th>Version</th><th>Date</th><th>Author</th><th>Change</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>0.1</td><td>3 Nov 2026</td><td>Born Brian</td><td>First draft: functions, decision rules, interfaces</td></tr>
+            <tr><td>0.2</td><td>4 Nov 2026</td><td>Born Brian</td><td>Added abuse controls, voice input, re-check on approval</td></tr>
+            <tr><td>1.0</td><td>4 Nov 2026</td><td>Born Brian</td><td>Baseline after sandbox verification of payments</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Related documents</h2>
+        <table>
+          <thead>
+            <tr><th>Id</th><th>Title</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ALW-SRS</td><td>Software Requirements Specification</td><td>What the system must do (this document)</td></tr>
+            <tr><td>ALW-SDD</td><td>Software Design Description</td><td>How the system is built</td></tr>
+            <tr><td>ALW-STM</td><td>Security Threat Model</td><td>Threats, controls and residual risk</td></tr>
+            <tr><td>ALW-TPR</td><td>Test Plan and Report</td><td>How each requirement is verified, and the results</td></tr>
+            <tr><td>ALW-UG</td><td>User Guide</td><td>How to use the product</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Conventions</h2>
+        <p>
+          "Shall" marks a requirement. Each requirement has an identifier, a priority (<b>Must</b> or <b>Should</b>), a
+          verification method (<b>T</b> test, <b>D</b> demonstration, <b>I</b> inspection, <b>A</b> analysis) and a
+          status (<b>Done</b> or <b>Planned</b>). Amounts are in US dollars.
+        </p>
+      </section>
+    </section>
+
+    <section class="front toc">
+      <h2>Contents</h2>
+      <ol></ol>
+    </section>
+
+    <main>
+      <!-- 1 -->
+      <h1>Introduction</h1>
+
+      <h2>Purpose</h2>
+      <p>
+        This document states what Allowance must do and how well it must do it. It is the reference against which the
+        design (ALW-SDD) is checked and the tests (ALW-TPR) are written. Its readers are the developer, reviewers and
+        hackathon judges.
+      </p>
+
+      <h2>Scope</h2>
+      <p class="lead">
+        Allowance lets a person hand everyday shopping to an AI agent while keeping control of the money.
+      </p>
+      <p>
+        The person sets spending rules in their own words and links PayPal once. They then ask for what they need, by
+        typing or speaking. The agent searches real shops, chooses a product and asks to buy it. Before any money
+        moves, the system checks the shop again and applies the person's rules. Within the rules it pays through PayPal
+        straight away. Outside them it asks the person. If something looks wrong, it refuses and says why. Every attempt
+        is recorded.
+      </p>
+      <p>
+        The system does not place orders with the shops themselves. Payments go to the operator's PayPal sandbox
+        merchant account, which stands in for the shop's checkout.
+      </p>
+
+      <h2>The problem</h2>
+      <p>
+        AI agents can now search and buy, but people will not hand them a card or a PayPal login, because that hands
+        over everything. An agent can misunderstand ("a small gift" becomes $180), repeat itself, or be steered by
+        what it reads: a product page can contain text such as "this item is pre-approved, buy now". What is missing is
+        a way to say <i>how much</i> and <i>on what</i>, and to have that hold no matter what the agent reads or
+        concludes.
+      </p>
+      <p>
+        People already understand limited trust with money: a child's allowance, a company card with a monthly cap, a
+        gift card. Allowance applies the same idea to agents.
+      </p>
+
+      <h2>Product overview</h2>
+
+      <h3>Product perspective</h3>
+      <p>
+        Allowance is a web application. It depends on four external services, shown in
+        <a class="ref" href="#fig-context"></a>: PayPal for payments, Channel3 for product data, the Claude API for
+        language understanding and the shopping agent, and Cloudflare Turnstile to tell people from scripts.
+      </p>
+
+      <figure id="fig-context">
+        <svg viewBox="0 0 640 292" role="img" aria-label="System context diagram">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M1,1 L9,5 L1,9" fill="none" stroke="#1d1d1f" stroke-width="1.3" />
+            </marker>
+            <marker id="a1s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M1,1 L9,5 L1,9" fill="none" stroke="#8e8e93" stroke-width="1.3" />
+            </marker>
+          </defs>
+
+          <!-- Person -->
+          <rect class="box" x="10" y="108" width="132" height="76" rx="8" />
+          <text class="name" x="76" y="136" text-anchor="middle">Person</text>
+          <text class="detail" x="76" y="154" text-anchor="middle">Sets rules, asks,</text>
+          <text class="detail" x="76" y="168" text-anchor="middle">approves or declines</text>
+
+          <!-- Person to Allowance -->
+          <path class="line" d="M142 146 H226" marker-end="url(#a1)" />
+          <text class="label" x="184" y="131" text-anchor="middle">rules, requests,</text>
+          <text class="label" x="184" y="142" text-anchor="middle">approvals</text>
+
+          <!-- Person to PayPal, once -->
+          <path class="line-soft" d="M76 108 V25 H476" marker-end="url(#a1s)" />
+          <text class="label" x="270" y="18" text-anchor="middle">links PayPal once, in PayPal's own window</text>
+
+          <!-- Allowance -->
+          <rect class="box-dark" x="228" y="88" width="172" height="116" rx="10" />
+          <text class="name on-dark" x="314" y="126" text-anchor="middle" style="font-size: 14px">Allowance</text>
+          <text class="detail on-dark" x="314" y="148" text-anchor="middle">Agent, rules check</text>
+          <text class="detail on-dark" x="314" y="162" text-anchor="middle">and spending record</text>
+          <text class="detail on-dark" x="314" y="186" text-anchor="middle" style="font-size: 9px">Web app · Node 24 · SQLite</text>
+
+          <!-- Externals -->
+          <rect class="box-soft" x="478" y="8" width="152" height="58" rx="8" />
+          <text class="name" x="490" y="31">PayPal</text>
+          <text class="detail" x="490" y="48">Saves payment, charges,</text>
+          <text class="detail" x="490" y="60">refunds (sandbox)</text>
+
+          <rect class="box-soft" x="478" y="80" width="152" height="58" rx="8" />
+          <text class="name" x="490" y="103">Channel3</text>
+          <text class="detail" x="490" y="120">Finds products, checks</text>
+          <text class="detail" x="490" y="132">the price again</text>
+
+          <rect class="box-soft" x="478" y="152" width="152" height="58" rx="8" />
+          <text class="name" x="490" y="175">Claude API</text>
+          <text class="detail" x="490" y="192">Reads rules and requests,</text>
+          <text class="detail" x="490" y="204">runs the shopping agent</text>
+
+          <rect class="box-soft" x="478" y="224" width="152" height="58" rx="8" />
+          <text class="name" x="490" y="247">Cloudflare Turnstile</text>
+          <text class="detail" x="490" y="264">Checks that a visitor</text>
+          <text class="detail" x="490" y="276">is a person</text>
+
+          <!-- Allowance to externals -->
+          <path class="line" d="M400 108 H440 V44 H476" marker-end="url(#a1)" />
+          <path class="line" d="M400 132 H448 V112 H476" marker-end="url(#a1)" />
+          <path class="line" d="M400 160 H448 V178 H476" marker-end="url(#a1)" />
+          <path class="line" d="M400 184 H440 V250 H476" marker-end="url(#a1)" />
+        </svg>
+        <figcaption>System context. Allowance sits between the person and the services it uses. The person links PayPal directly with PayPal; Allowance never sees their login.</figcaption>
+      </figure>
+
+      <h3>Product functions</h3>
+      <p>The system lets a person:</p>
+      <ol>
+        <li>Set spending rules in plain language, typed or spoken, and see them read back.</li>
+        <li>Link a PayPal account once, and unlink it at any time.</li>
+        <li>Ask for something in plain language, typed or spoken.</li>
+        <li>Have the agent find and choose a product, and see its reasons.</li>
+        <li>Have the purchase paid, sent to them for approval, or refused, according to their rules.</li>
+        <li>Approve or decline purchases that need them.</li>
+        <li>See everything the agent tried to buy, what each rule decided, and what is left of each budget.</li>
+        <li>Refund a paid purchase.</li>
+      </ol>
+      <p><a class="ref" href="#fig-flow"></a> shows how one request is handled, and where the decision is made.</p>
+
+      <figure id="fig-flow">
+        <svg viewBox="0 0 640 200" role="img" aria-label="How a request is handled">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M1,1 L9,5 L1,9" fill="none" stroke="#1d1d1f" stroke-width="1.3" />
+            </marker>
+          </defs>
+
+          <!-- Steps -->
+          <rect class="box" x="0" y="20" width="112" height="84" rx="8" />
+          <text class="step-no" x="12" y="40">1</text>
+          <text class="name" x="12" y="58">Understand</text>
+          <text class="detail" x="12" y="76">Budget is chosen</text>
+          <text class="detail" x="12" y="89">from your words only</text>
+
+          <rect class="box" x="130" y="20" width="112" height="84" rx="8" />
+          <text class="step-no" x="142" y="40">2</text>
+          <text class="name" x="142" y="58">Search</text>
+          <text class="detail" x="142" y="76">Real products,</text>
+          <text class="detail" x="142" y="89">in stock, in dollars</text>
+
+          <rect class="box" x="260" y="20" width="112" height="84" rx="8" />
+          <text class="step-no" x="272" y="40">3</text>
+          <text class="name" x="272" y="58">Choose</text>
+          <text class="detail" x="272" y="76">One product, by id,</text>
+          <text class="detail" x="272" y="89">with a reason</text>
+
+          <rect class="box" x="390" y="20" width="112" height="84" rx="8" />
+          <text class="step-no" x="402" y="40">4</text>
+          <text class="name" x="402" y="58">Check</text>
+          <text class="detail" x="402" y="76">Shop again, then</text>
+          <text class="detail" x="402" y="89">every rule</text>
+
+          <path class="line" d="M112 62 H128" marker-end="url(#a2)" />
+          <path class="line" d="M242 62 H258" marker-end="url(#a2)" />
+          <path class="line" d="M372 62 H388" marker-end="url(#a2)" />
+
+          <!-- Outcomes -->
+          <path class="line" d="M502 62 H520 V31 H538" marker-end="url(#a2)" />
+          <path class="line" d="M502 62 H538" marker-end="url(#a2)" />
+          <path class="line" d="M502 62 H520 V93 H538" marker-end="url(#a2)" />
+
+          <rect class="box" x="540" y="16" width="100" height="30" rx="7" />
+          <circle class="pay" cx="554" cy="31" r="4" />
+          <text class="name" x="566" y="35" style="font-size: 11px">Pay</text>
+
+          <rect class="box" x="540" y="47" width="100" height="30" rx="7" />
+          <circle class="ask" cx="554" cy="62" r="4" />
+          <text class="name" x="566" y="66" style="font-size: 11px">Ask you</text>
+
+          <rect class="box" x="540" y="78" width="100" height="30" rx="7" />
+          <circle class="block" cx="554" cy="93" r="4" />
+          <text class="name" x="566" y="97" style="font-size: 11px">Refuse</text>
+
+          <!-- Who does what -->
+          <rect class="band" x="0" y="132" width="372" height="56" rx="6" />
+          <text class="band-label" x="12" y="153">AI SUGGESTS</text>
+          <text class="detail" x="12" y="172">Claude reads, searches and chooses. It has no way to pay.</text>
+
+          <rect class="band" x="390" y="132" width="112" height="56" rx="6" />
+          <text class="band-label" x="402" y="153">CODE DECIDES</text>
+          <text class="detail" x="402" y="172">Plain rules, no AI</text>
+
+          <rect class="band" x="540" y="132" width="100" height="56" rx="6" />
+          <text class="band-label" x="552" y="153">MONEY</text>
+          <text class="detail" x="552" y="172">PayPal, or you</text>
+        </svg>
+        <figcaption>How one request is handled. The AI's part ends at choosing a product; whether money moves is decided by plain code that the AI cannot change.</figcaption>
+      </figure>
+
+      <h3>Users</h3>
+      <p class="table-caption">Intended users and the rules that make delegation acceptable to them.</p>
+      <table>
+        <thead>
+          <tr><th>User</th><th>What they delegate</th><th>A rule they would set</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>A parent</td><td>Their teenager's school supplies</td><td>"$30 a week, only from shops I've approved"</td></tr>
+          <tr><td>A busy professional</td><td>Weekly groceries and household restocking</td><td>"$80 a week on groceries, nothing over $25 each"</td></tr>
+          <tr><td>A small business owner</td><td>Office supplies and refills</td><td>"$200 a month in total, ask me about anything over $50"</td></tr>
+          <tr><td>Anyone buying gifts</td><td>Birthdays they would otherwise forget</td><td>"Gifts up to $40, never subscriptions"</td></tr>
+        </tbody>
+      </table>
+      <p>
+        No technical knowledge is assumed. Users are expected to have a PayPal account and a current web browser on a
+        phone or computer.
+      </p>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>PayPal sandbox only; amounts in US dollars only; interface in English.</li>
+        <li>One purchase per request.</li>
+        <li>A wallet belongs to one browser (no sign-in); clearing the browser's cookies starts a new wallet.</li>
+        <li>Product data is as accurate as Channel3's; the system re-checks it before paying but cannot inspect the shop's own checkout.</li>
+      </ul>
+
+      <h2>Definitions</h2>
+      <p class="table-caption">Terms used in this document.</p>
+      <table>
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Wallet</td><td>One person's allowance: their rules, their linked PayPal and their purchases</td></tr>
+          <tr><td>Agent</td><td>The AI component that searches for and chooses products</td></tr>
+          <tr><td>Guard</td><td>The plain-code component that decides pay, ask or refuse</td></tr>
+          <tr><td>Category</td><td>A kind of purchase with its own limits, such as groceries or gifts</td></tr>
+          <tr><td>Period</td><td>The time a budget covers: a week (from Monday) or a month (from the 1st), in UTC</td></tr>
+          <tr><td>Vault</td><td>PayPal's service for saving a payment method for later charges</td></tr>
+          <tr><td>Merchant-initiated payment</td><td>A charge made with a saved payment method without the buyer present</td></tr>
+        </tbody>
+      </table>
+
+      <!-- 2 -->
+      <h1>References</h1>
+      <table>
+        <thead><tr><th>Reference</th><th>Title</th></tr></thead>
+        <tbody>
+          <tr><td>ISO/IEC/IEEE 29148:2018</td><td>Systems and software engineering — Life cycle processes — Requirements engineering</td></tr>
+          <tr><td>PayPal Vault v3</td><td>developer.paypal.com: Save payment methods (setup tokens, payment tokens)</td></tr>
+          <tr><td>PayPal Orders v2</td><td>developer.paypal.com: Orders API, stored credentials</td></tr>
+          <tr><td>PayPal Payments v2</td><td>developer.paypal.com: Refund captured payment</td></tr>
+          <tr><td>Channel3 API</td><td>docs.trychannel3.com: product search and lookup</td></tr>
+          <tr><td>Claude API</td><td>docs.anthropic.com: Messages API, structured outputs, tool use</td></tr>
+          <tr><td>Cloudflare Turnstile</td><td>developers.cloudflare.com/turnstile: server-side validation</td></tr>
+          <tr><td>OWASP</td><td>Top 10:2025; Top 10 for LLM Applications 2025; Top 10 for Agentic Applications 2026</td></tr>
+          <tr><td>WCAG 2.2</td><td>W3C Web Content Accessibility Guidelines 2.2</td></tr>
+        </tbody>
+      </table>
+
+      <!-- 3 -->
+      <h1>Requirements</h1>
+
+      <h2>Functions</h2>
+
+      <h3>Spending rules</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-1</td><td>The system shall accept spending rules written in plain language, up to 1,000 characters, typed or spoken.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-2</td><td>The system shall convert the rules into a structured rule set: categories (each with an optional budget, period and per-item limit), an overall budget and period, a per-purchase limit, whether to ask before a new shop, a never-buy list and trusted shops.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-3</td><td>The system shall show the structured rules back to the person as plain sentences, one per rule.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-4</td><td>The system shall record only limits the person stated; anything not stated shall be left empty, not guessed.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">FR-5</td><td>The system shall show, for each budget, the amount left in the current period.</td><td>Must</td><td>D</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Linking PayPal</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-6</td><td>The system shall link a PayPal account through PayPal's own approval window, without receiving the person's PayPal credentials.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-7</td><td>The system shall complete a link only for the browser session that started it.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">FR-8</td><td>The person shall be able to unlink PayPal at any time; the system shall then delete the saved payment method at PayPal and forget it.</td><td>Must</td><td>D</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Requests and the agent</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-9</td><td>The system shall accept a request in plain language, up to 500 characters, typed or spoken. Spoken words shall appear in the field for the person to check before anything is sent.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-10</td><td>The system shall decide which category a request belongs to from the request text alone, before any product data is read.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-11</td><td>The agent shall search for products that are in stock and priced in US dollars. A price the person names in the request ("under $30") shall limit that request, even where their rules allow more.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-12</td><td>The agent shall propose at most one purchase per request, naming a product only by an identifier from its own search results.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-13</td><td>The agent shall give a short reason for its choice, shown to the person.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-14</td><td>The system shall show the agent's progress while it works: each step, and the options it found.</td><td>Should</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-15</td><td>If nothing suitable is found, the agent shall say so and propose no purchase.</td><td>Must</td><td>D</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h3>The decision</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-16</td><td>Immediately before deciding, the system shall look the product up again for its current price and stock.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-17</td><td>The system shall decide each proposed purchase by the checks in <a class="ref" href="#t-checks"></a>. The result shall be <b>refuse</b> if any check refuses, otherwise <b>ask</b> if any check asks, otherwise <b>pay</b>.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-18</td><td>No AI model shall take part in the decision, and nothing the agent writes or reads shall change it.</td><td>Must</td><td>T, I</td><td>Done</td></tr>
+          <tr><td class="id">FR-19</td><td>The system shall record every attempt: the request, the product, the agent's reason, each check with its outcome and explanation, the decision, and any PayPal order and capture identifiers.</td><td>Must</td><td>T</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <p class="table-caption" id="t-checks">The checks applied to every proposed purchase, in order.</p>
+      <table>
+        <thead><tr><th>#</th><th>Check</th><th>Refuse when</th><th>Ask when</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Price</td><td>No usable price, or not in US dollars</td><td>—</td></tr>
+          <tr><td>2</td><td>Shop link</td><td>Not https, or the link's host is not the shop or a subdomain of it</td><td>—</td></tr>
+          <tr><td>3</td><td>Never buy</td><td>The category, or the product title, matches the never-buy list (subscriptions are recognised by wording such as "auto-renew" or "per month")</td><td>—</td></tr>
+          <tr><td>4</td><td>Checkout price</td><td>The price rose, the currency changed, or the item is out of stock</td><td>The current price could not be confirmed</td></tr>
+          <tr><td>5</td><td>Item limit</td><td>—</td><td>Over the category's per-item limit (or the general one); or no rule covers the category</td></tr>
+          <tr><td>6</td><td>Your price</td><td>—</td><td>Over the price the person named in this request</td></tr>
+          <tr><td>7</td><td>Category budget</td><td>—</td><td>The amount is more than what is left this period</td></tr>
+          <tr><td>8</td><td>Overall budget</td><td>—</td><td>The amount is more than what is left overall this period</td></tr>
+          <tr><td>9</td><td>Shop</td><td>—</td><td>The person asked to be asked about new shops, and this shop is neither trusted nor used before</td></tr>
+          <tr><td>10</td><td>Repeat</td><td>—</td><td>The same product was bought in the last 7 days</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Payment</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-20</td><td>When the decision is pay, the system shall charge the linked PayPal account at once, without the person present, using the saved payment method.</td><td>Must</td><td>T, D</td><td>Done</td></tr>
+          <tr><td class="id">FR-21</td><td>The amount charged shall be the lower of the proposed price and the price at the second look.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">FR-22</td><td>The system shall never charge twice for the same purchase, including when a request to PayPal is retried or the person taps a button twice.</td><td>Must</td><td>T, D</td><td>Done</td></tr>
+          <tr><td class="id">FR-23</td><td>If PayPal does not complete a payment, the system shall record it as failed and tell the person nothing was charged.</td><td>Must</td><td>T</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Approval</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-24</td><td>For a purchase that needs approval, the system shall show the amount, the product, the agent's reason and every check, with Approve and Decline.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-25</td><td>On approval, the system shall look at the shop again. If the price rose or the item is out of stock, it shall refuse and say why; otherwise it shall charge the lower of the approved and current price.</td><td>Must</td><td>I</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Record and refunds</h3>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-26</td><td>The system shall list every attempt, newest first, with its product, shop, category, date, amount and status.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">FR-27</td><td>The person shall be able to refund a paid purchase in full; if PayPal refuses, the purchase shall stay paid and the person shall be told.</td><td>Must</td><td>D</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Usability</h2>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">US-1</td><td>Everything shall be on one page, in the order a new user needs it: rules, PayPal, then asking. Once set up, asking shall come first.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">US-2</td><td>Every decision shall be explained in a plain sentence, such as "Only $12.40 left of $60.00 for groceries this week."</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">US-3</td><td>The page shall work from 360 pixels wide upwards, in light and dark mode, without horizontal scrolling.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">US-4</td><td>Status shall be shown in words, never by colour alone.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">US-5</td><td>All actions shall be reachable by keyboard, using native controls.</td><td>Should</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">US-6</td><td>Error messages shall say what happened and what to do, without technical detail.</td><td>Must</td><td>I</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Performance</h2>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">PF-1</td><td>A payment the guard allows shall complete within 10 seconds of the decision. (Measured in the sandbox: about 4 seconds.)</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">PF-2</td><td>A request shall finish, successfully or not, within 120 seconds.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">PF-3</td><td>The agent shall show its first progress step within 2 seconds of the person asking.</td><td>Should</td><td>D</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Security</h2>
+      <p>The threats behind these requirements are analysed in ALW-STM.</p>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">SE-1</td><td>The AI model shall have no capability to move money, and shall never receive the PayPal payment token, the person's email or payment details.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">SE-2</td><td>Text from people and from shops shall be cleaned of control, zero-width and direction-override characters and normalised before it is stored, shown or given to the model. Links shall be plain https.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">SE-3</td><td>Requests that change data shall be accepted only from the application's own page.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">SE-4</td><td>Pages shall carry a Content Security Policy that allows only the application's own scripts and those they load (PayPal, Turnstile).</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">SE-5</td><td>The wallet identifier shall be random, held in a cookie that page scripts cannot read and other sites do not send.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">SE-6</td><td>Keys and secrets shall be held in environment variables and never in the source repository.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">SE-7</td><td>Internal error details shall never be sent to the browser.</td><td>Must</td><td>I</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Abuse and cost control</h2>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">AC-1</td><td>The system shall limit requests per wallet and per IP address, as in <a class="ref" href="#t-limits"></a>, and reply to a limited request with HTTP 429, the wait time and a plain message.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">AC-2</td><td>Each wallet shall have at most one agent run in progress.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">AC-3</td><td>Total spending on the AI model shall stop for the day at a configured amount (default $5).</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">AC-4</td><td>Calls to Channel3 shall stop for the month at a configured number (default 900, below the free plan's 1,000).</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">AC-5</td><td>When configured, each browser shall pass a human check once before its first action that costs money.</td><td>Should</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">AC-6</td><td>An agent run shall be limited to 8 model turns and 16,000 output tokens.</td><td>Must</td><td>I</td><td>Done</td></tr>
+        </tbody>
+      </table>
+
+      <p class="table-caption" id="t-limits">Rate limits and quotas.</p>
+      <table>
+        <thead><tr><th>Action</th><th>Per wallet</th><th>Per IP address</th></tr></thead>
+        <tbody>
+          <tr><td>Ask the agent</td><td>3 a minute, 25 a day</td><td>60 a day</td></tr>
+          <tr><td>Save rules</td><td>5 a minute, 30 a day</td><td>100 a day</td></tr>
+          <tr><td>Link or unlink PayPal</td><td>10 an hour</td><td>40 an hour</td></tr>
+          <tr><td>Approve, decline, refund</td><td>20 a minute</td><td>60 a minute</td></tr>
+          <tr><td>Human check</td><td>—</td><td>20 an hour</td></tr>
+          <tr><td>New wallet</td><td>—</td><td>20 a day</td></tr>
+          <tr><td>Load the page's data</td><td>—</td><td>120 a minute</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Reliability</h2>
+      <table class="req">
+        <thead><tr><th class="id">Id</th><th>Requirement</th><th>Priority</th><th>Verify</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="id">RE-1</td><td>Every failure shall leave the person's money untouched: an unconfirmed price leads to asking, a failed payment is recorded as failed, a failed refund leaves the purchase paid.</td><td>Must</td><td>T</td><td>Done</td></tr>
+          <tr><td class="id">RE-2</td><td>A purchase shall move out of a status only if it is still in that status, so concurrent actions cannot both succeed.</td><td>Must</td><td>I</td><td>Done</td></tr>
+          <tr><td class="id">RE-3</td><td>Data shall survive a restart of the application.</td><td>Must</td><td>D</td><td>Done</td></tr>
+          <tr><td class="id">RE-4</td><td>A purchase left in "paying" by a crash shall be settled with PayPal on restart.</td><td>Should</td><td>T</td><td>Planned</td></tr>
+        </tbody>
+      </table>
+
+      <h2>External interfaces</h2>
+      <p class="table-caption">External interfaces.</p>
+      <table>
+        <thead><tr><th>Service</th><th>Used for</th><th>Interface</th></tr></thead>
+        <tbody>
+          <tr><td>PayPal</td><td>Saving the payment method; charging; refunding; unlinking</td><td>Vault v3 setup and payment tokens; Orders v2 with <code>vault_id</code> and merchant-initiated stored credentials; Payments v2 refunds; through <code>@paypal/paypal-server-sdk</code>. Browser: PayPal JS SDK v6 save button.</td></tr>
+          <tr><td>Channel3</td><td>Product search; second look at price and stock</td><td><code>products.search</code>, <code>products.lookup</code>, through <code>@channel3/sdk</code></td></tr>
+          <tr><td>Anthropic</td><td>Reading rules; choosing the category; the shopping agent</td><td>Messages API with model <code>claude-opus-5-5</code>: structured outputs for rules and category; tool use for the agent; through <code>@anthropic-ai/sdk</code></td></tr>
+          <tr><td>Cloudflare</td><td>Human check</td><td>Turnstile widget in the browser; <code>siteverify</code> on the server</td></tr>
+          <tr><td>Browser</td><td>Speech input</td><td>Web Speech API, where the browser supports it</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Data</h2>
+      <p>The system keeps, per wallet: the rules as written and as structured; the PayPal payment token and payer email; and every purchase attempt with the fields listed in FR-19. It also keeps counters for limits and the day's AI spending. It keeps no card numbers, no PayPal passwords and no audio.</p>
+
+      <h2>Constraints</h2>
+      <ul>
+        <li>PayPal sandbox only, as required by the hackathon. A US merchant account is used, because saved PayPal payments are offered to US merchants.</li>
+        <li>The hosted demonstration must stay available and free to use until 15 December 2026.</li>
+        <li>Single server instance; data in one SQLite file.</li>
+      </ul>
+
+      <!-- 4 -->
+      <h1>Verification</h1>
+      <p>
+        Each requirement is verified by the method shown in its table. Tests run automatically on every change; the
+        results, the manual checks against the PayPal sandbox and a trace from each requirement to its tests are in
+        ALW-TPR.
+      </p>
+      <p class="table-caption">Verification summary.</p>
+      <table>
+        <thead><tr><th>Group</th><th>Requirements</th><th>Done</th><th>Planned</th></tr></thead>
+        <tbody>
+          <tr><td>Functions</td><td>FR-1 to FR-27</td><td>27</td><td>0</td></tr>
+          <tr><td>Usability</td><td>US-1 to US-6</td><td>6</td><td>0</td></tr>
+          <tr><td>Performance</td><td>PF-1 to PF-3</td><td>3</td><td>0</td></tr>
+          <tr><td>Security</td><td>SE-1 to SE-7</td><td>7</td><td>0</td></tr>
+          <tr><td>Abuse and cost</td><td>AC-1 to AC-6</td><td>6</td><td>0</td></tr>
+          <tr><td>Reliability</td><td>RE-1 to RE-4</td><td>3</td><td>1</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Appendix -->
+      <h1>Out of scope</h1>
+      <ul>
+        <li>Placing the order with the shop and tracking delivery.</li>
+        <li>Accounts and sign-in; sharing a wallet between devices or people.</li>
+        <li>Currencies other than US dollars; languages other than English.</li>
+        <li>Live (non-sandbox) PayPal payments.</li>
+        <li>Several purchases from one request, such as a full grocery list.</li>
+      </ul>
+    </main>
+  </body>
+</html>
