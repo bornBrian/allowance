@@ -91,6 +91,16 @@ describe("proposePurchase", () => {
     expect(result).toMatch(/asked to approve/);
   });
 
+  it("holds to a price the person named, even when their rules allow more", async () => {
+    const services = fakes();
+    const { purchase } = await proposePurchase(
+      { wallet: wallet(), ...ask(product()), request: "a gift under $25", maxPrice: 25 },
+      services,
+    );
+    expect(purchase.status).toBe("waiting");
+    expect(services.charge).not.toHaveBeenCalled();
+  });
+
   it("blocks when the price went up at checkout", async () => {
     const services = fakes({ priceCents: 3999 });
     const { purchase } = await proposePurchase({ wallet: wallet(), ...ask(product()) }, services);

@@ -50,12 +50,13 @@ export interface GuardInput {
   rules: Rules;
   history: PastPurchase[]; // paid purchases only
   now: Date;
+  requestMaxCents?: number | null; // a price the person named in this request ("under $30")
 }
 
 const SUBSCRIPTION_WORDS = /subscri|membership|auto-?renew|monthly plan|annual plan|per month|\/mo\b/i;
 const REPEAT_WINDOW_DAYS = 7;
 
-export function decide({ proposal, checkout, rules, history, now }: GuardInput): Decision {
+export function decide({ proposal, checkout, rules, history, now, requestMaxCents }: GuardInput): Decision {
   const checks: Check[] = [];
   const add = (label: string, outcome: Check["outcome"], detail: string) =>
     checks.push({ label, outcome, detail });
@@ -124,6 +125,15 @@ export function decide({ proposal, checkout, rules, history, now }: GuardInput):
     }
   } else if (!rule) {
     add("Item limit", "ask", `None of your rules cover ${category}.`);
+  }
+
+  // 5b. A price the person named when asking holds for this request, even under a looser rule.
+  if (requestMaxCents) {
+    if (amount > requestMaxCents) {
+      add("Your price", "ask", `You asked for up to ${money(requestMaxCents)}; this is ${money(amount)}.`);
+    } else {
+      add("Your price", "ok", `Within the ${money(requestMaxCents)} you asked for.`);
+    }
   }
 
   // 6. Category budget for this week or month.

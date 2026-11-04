@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { recheck as channel3Recheck, type Product } from "./channel3";
 import { addPurchase, getPurchase, paidHistory, setStatus, type Purchase, type Wallet } from "./db";
-import { decide, money } from "./guard";
+import { cents, decide, money } from "./guard";
 import { charge as paypalCharge } from "./paypal";
 
 // What happens when the agent asks to buy a product:
@@ -14,6 +14,7 @@ export interface PurchaseRequest {
   request: string; // what the person asked for
   product: Product; // from the agent's own search results, never from the model's words
   category: string; // decided from the person's words before any product was seen
+  maxPrice?: number | null; // a price in dollars the person named in the request
   why: string; // the agent's reason, shown to the person
 }
 
@@ -27,7 +28,7 @@ export interface Services {
 const live: Services = { recheck: channel3Recheck, charge: paypalCharge, status: () => {} };
 
 export async function proposePurchase(
-  { wallet, request, product, category, why }: PurchaseRequest,
+  { wallet, request, product, category, maxPrice, why }: PurchaseRequest,
   services: Partial<Services> = {},
 ): Promise<{ purchase: Purchase; result: string }> {
   const { recheck, charge, status } = { ...live, ...services };
@@ -42,6 +43,7 @@ export async function proposePurchase(
     rules: wallet.rules,
     history: paidHistory(wallet.id),
     now: new Date(),
+    requestMaxCents: maxPrice ? cents(maxPrice) : null,
   });
 
   const id = randomUUID();
