@@ -49,18 +49,28 @@ main {
   padding: 56px 16px 96px;
 }
 
-header h1 {
-  margin: 0;
-  font-size: 40px;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-weight: 700;
+.hero .wordmark {
+  margin: 0 0 28px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-header p {
-  margin: 8px 0 0;
+.hero h1 {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  max-width: 15em;
+}
+
+.hero p:last-child {
+  margin: 16px 0 0;
   font-size: 19px;
+  line-height: 1.45;
   color: var(--muted);
+  max-width: 34em;
 }
 
 section {
@@ -74,9 +84,128 @@ section > h2 {
   font-weight: 600;
 }
 
-section > .lead {
+section > .lead,
+.lead {
   margin: 4px 0 16px;
   color: var(--muted);
+}
+
+/* First visit: three numbered steps. */
+.step + .step {
+  margin-top: 40px;
+}
+
+.step-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px !important;
+}
+
+.step-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* A finished step, folded to one line with an Edit link. */
+.folded {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Once set up: the allowance at a glance. */
+.card {
+  margin-top: 40px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.card-top {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 32px;
+  align-items: end;
+  padding-bottom: 20px;
+}
+
+.card-top p {
+  margin: 0;
+}
+
+.big-number {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.budgets {
+  display: grid;
+  gap: 12px;
+}
+
+.budget-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.bar {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.bar span {
+  display: block;
+  height: 100%;
+  background: var(--text);
+}
+
+.card-row {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.card-label {
+  flex: 0 0 64px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.card-text {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+}
+
+.suggestions {
+  margin-top: 20px;
+}
+
+.suggestions p {
+  margin: 0 0 6px;
+}
+
+.suggestions li + li {
+  margin-top: 6px;
+}
+
+.suggestions button.link {
+  font-weight: 400;
+  text-align: left;
 }
 
 textarea,
@@ -331,10 +460,27 @@ span.thumb {
 
 @media (max-width: 520px) {
   main {
-    padding-top: 40px;
+    padding-top: 32px;
   }
-  header h1 {
+  .hero h1 {
     font-size: 34px;
+  }
+  .hero p:last-child {
+    font-size: 17px;
+  }
+  .card {
+    padding: 18px;
+  }
+  .card-top {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .card-row {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .card-label {
+    flex-basis: 100%;
   }
   .checks li {
     grid-template-columns: 1fr;

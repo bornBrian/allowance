@@ -20,6 +20,15 @@ interface Recognition {
 
 type RecognitionClass = new () => Recognition;
 
+const SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Microphone access is off for this site. Allow it from the icon in the address bar, then try again.",
+  "service-not-allowed": "This browser doesn't allow speech input here. Chrome, Edge or Safari usually do; or type instead.",
+  network: "This browser's speech service isn't reachable (Brave and some others turn it off). Try Chrome, Edge or Safari, or type instead.",
+  "audio-capture": "No microphone was found. Check one is connected, or type instead.",
+  "no-speech": "Didn't hear anything. Try again a little closer to the microphone.",
+  "language-not-supported": "Speech input doesn't support this browser's language. Type instead.",
+};
+
 function recognitionClass(): RecognitionClass | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: RecognitionClass; webkitSpeechRecognition?: RecognitionClass };
@@ -53,25 +62,34 @@ export function Speak({
     // Speech is added after whatever is already typed.
     const before = value.trim() ? value.trim() + " " : "";
     const r = new Class();
-    r.lang = navigator.language || "en-US";
+    // The app is in English, so listen for English whatever the browser's own language is.
+    r.lang = navigator.language?.toLowerCase().startsWith("en") ? navigator.language : "en-US";
     r.interimResults = true;
     r.continuous = true;
+    let heardAnything = false;
+    let failed = false;
     r.onresult = (e) => {
       let heard = "";
       for (let i = 0; i < e.results.length; i++) heard += e.results[i][0].transcript;
+      if (heard.trim()) heardAnything = true;
       onChange(before + heard.trim());
     };
+    // Every failure gets a reason, so speech never stops without explanation.
     r.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setProblem("Microphone access is off for this site. You can allow it in the browser's address bar.");
-      } else if (e.error === "no-speech") {
-        setProblem("Didn't hear anything. Try again a little closer to the microphone.");
-      }
+      failed = true;
+      setProblem(SPEECH_ERRORS[e.error] ?? "Speech input stopped. You can type instead.");
     };
-    r.onend = () => setListening(false);
+    r.onend = () => {
+      setListening(false);
+      if (!heardAnything && !failed) setProblem("Didn't catch anything. Try again, or type instead.");
+    };
     recognition.current = r;
-    r.start();
-    setListening(true);
+    try {
+      r.start();
+      setListening(true);
+    } catch {
+      setProblem("Speech input couldn't start. Try again, or type instead.");
+    }
   }
 
   function stop() {
