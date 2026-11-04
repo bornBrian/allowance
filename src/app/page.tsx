@@ -11,14 +11,37 @@ import { LinkPayPal } from "./link-paypal";
 import { NotifyToggle } from "./notify-toggle";
 import { Speak } from "./speak";
 
+type Post = (url: string, body?: unknown, method?: string) => Promise<void>;
+type Tab = "home" | "activity" | "people" | "rules";
+
+// One request to the agent, as it happens: what was asked, each step, the
+// products it looked at, and the purchase it proposed.
+interface Run {
+  request: string;
+  busy: boolean;
+  steps: string[];
+  options: Product[];
+  purchaseId: string | null;
+  reply: string | null;
+  error: string | null;
+}
+
 export default function Home() {
   const [state, setState] = useState<AppState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("home");
+  const [run, setRun] = useState<Run | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const refresh = useCallback(() => loadState().then(setState, () => {}), []);
 
   useEffect(() => {
     loadState()
       .then(setState)
       .catch((e: Error) => setError(e.message));
+    // A notification tapped on a phone opens the page at that purchase.
+    const id = new URLSearchParams(window.location.search).get("purchase");
+    if (id) setOpenId(id);
   }, []);
 
   // While someone is waiting on someone else, keep the page current without a reload:
@@ -27,9 +50,9 @@ export default function Home() {
   const shared = (state?.role === "member" || (state?.members.length ?? 0) > 0) ?? false;
   useEffect(() => {
     if (!shared) return;
-    const timer = setInterval(() => loadState().then(setState, () => {}), waiting ? 5000 : 15000);
+    const timer = setInterval(refresh, waiting ? 5000 : 15000);
     return () => clearInterval(timer);
-  }, [shared, waiting]);
+  }, [shared, waiting, refresh]);
 
   const post = useCallback(async (url: string, body?: unknown, method = "POST") => {
     const res = await fetch(url, {
@@ -42,285 +65,174 @@ export default function Home() {
     setState(data as AppState);
   }, []);
 
-  const narrow = state?.role === "member";
-  const landing = state?.role === "payer" && !(state.rulesText && state.paypal.linked);
+  async function ask(request: string) {
+    setOpenId(null);
+    setRun({ request, busy: true, steps: [], options: [], purchaseId: null, reply: null, error: null });
+    const update = (change: (r: Run) => Partial<Run>) => setRun((r) => (r ? { ...r, ...change(r) } : r));
+    const handle = (e: AgentEvent) => {
+      if (e.type === "status") update((r) => ({ steps: [...r.steps, e.text] }));
+      else if (e.type === "products")
+        update((r) => ({ options: [...r.options, ...e.products.filter((p) => !r.options.some((x) => x.id === p.id))] }));
+      else if (e.type === "purchase") {
+        update(() => ({ purchaseId: e.purchase.id }));
+        refresh();
+      } else if (e.type === "reply") update(() => ({ reply: e.text }));
+      else if (e.type === "error") update(() => ({ error: e.text }));
+    };
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request }),
+      });
+      if (!res.ok || !res.body) throw new Error((await res.json()).error ?? "Something went wrong.");
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) if (line) handle(JSON.parse(line) as AgentEvent);
+      }
+    } catch (e) {
+      update(() => ({ error: (e as Error).message }));
+    } finally {
+      update(() => ({ busy: false }));
+      refresh();
+    }
+  }
+
+  const close = () => {
+    if (run?.busy) return;
+    setRun(null);
+    setOpenId(null);
+  };
+
+  const opened = state?.purchases.find((p) => p.id === openId) ?? null;
+  const setUp = state ? state.role === "member" || (Boolean(state.rulesText) && state.paypal.linked) : false;
+
   return (
-    <>
-      <AppBar state={state} navy={landing} />
-      <main className={narrow ? "narrow" : landing ? "flush" : undefined}>
-        {state && <Sections state={state} setState={setState} post={post} />}
-        {error && <p className="error">{error}</p>}
-      </main>
-    </>
+    <div className="page">
+      <Story />
+      <div className="app">
+        <TopBar state={state} />
+        {state && !setUp && <Onboarding state={state} setState={setState} post={post} />}
+        {state?.role === "member" && <MemberHome state={state} ask={ask} busy={Boolean(run?.busy)} open={setOpenId} />}
+        {state?.role === "payer" && setUp && (
+          <>
+            <div className="screen">
+              {tab === "home" && <PayerHome state={state} post={post} open={setOpenId} more={() => setTab("activity")} />}
+              {tab === "activity" && <Activity state={state} open={setOpenId} />}
+              {tab === "people" && <People state={state} post={post} />}
+              {tab === "rules" && <RulesTab state={state} post={post} />}
+            </div>
+            {tab === "home" && <AskBar ask={ask} busy={Boolean(run?.busy)} />}
+            <nav className="tabs" aria-label="Sections">
+              {(["home", "activity", "people", "rules"] as const).map((t) => (
+                <button key={t} aria-current={tab === t ? "page" : undefined} onClick={() => setTab(t)}>
+                  {TAB_NAMES[t]}
+                </button>
+              ))}
+            </nav>
+          </>
+        )}
+        {!state && <div className="screen">{error && <p className="error">{error}</p>}</div>}
+        {state && run && <Sheet state={state} post={post} close={close} run={run} />}
+        {state && !run && opened && <Sheet state={state} post={post} close={close} purchase={opened} />}
+      </div>
+    </div>
   );
 }
 
-type Post = (url: string, body?: unknown, method?: string) => Promise<void>;
+const TAB_NAMES: Record<Tab, string> = { home: "Home", activity: "Activity", people: "People", rules: "Rules" };
 
-function AppBar({ state, navy }: { state: AppState | null; navy: boolean }) {
+// Beside the app on a computer: what this is, in four lines. Hidden on phones.
+function Story() {
   return (
-    <header className={navy ? "appbar on-navy" : "appbar"}>
-      <div className="appbar-inner">
-        <p className="wordmark">
-          <span className="mark" aria-hidden>
-            A
-          </span>
-          Allowance
-        </p>
-        {state?.role === "member" && (
-          <span className="who">
-            <b>{state.memberName}</b> · from {state.ownerName ?? "your family"}
-          </span>
-        )}
-        {state?.role === "payer" && state.ownerName && (
-          <span className="who">
-            <b>{state.ownerName}</b> · pays
-          </span>
-        )}
+    <section className="story">
+      <h1 className="serif">
+        Pocket money for the <i>agent</i> that shops for your family.
+      </h1>
+      <p>
+        Mum says what she needs. An AI agent finds it in real shops and pays with your PayPal, only inside the rules you
+        set.
+      </p>
+      <div className="lines">
+        <div className="line">
+          <b>1</b>
+          <span>Write the rules the way you&rsquo;d say them.</span>
+        </div>
+        <div className="line">
+          <b>2</b>
+          <span>Invite Mum, or your teenager, to their own phone.</span>
+        </div>
+        <div className="line">
+          <b>3</b>
+          <span>Anything outside the rules waits for your OK, on your lock screen.</span>
+        </div>
       </div>
+      <p className="note">PayPal sandbox. No real money moves.</p>
+    </section>
+  );
+}
+
+function TopBar({ state }: { state: AppState | null }) {
+  const name = state?.role === "member" ? state.memberName : state?.ownerName;
+  return (
+    <header className="app-top">
+      <span className="brand">
+        <span className="coin" aria-hidden>
+          a
+        </span>
+        Allowance
+      </span>
+      {name && (
+        <span className="me" title={name} aria-hidden>
+          {initial(name)}
+        </span>
+      )}
     </header>
   );
 }
 
-function Sections({ state, setState, post }: { state: AppState; setState: (s: AppState) => void; post: Post }) {
-  const refresh = () => loadState().then(setState, () => {});
+// ---------- Setting up: one question per screen ----------
 
-  // Someone the payer looks after: big, simple, voice first.
-  if (state.role === "member") {
-    const owner = state.ownerName ?? "The person who set this up";
-    return (
-      <div className="member">
-        <section className="member-hero" style={{ marginTop: 0 }}>
-          <h1>Hi {state.memberName}.</h1>
-          <p>
-            {owner} has given you an allowance. Say what you need. If it fits, it&rsquo;s paid straight away. If not,{" "}
-            {state.ownerName ?? "they"} {state.ownerName ? "is" : "are"} asked first.
-          </p>
-          {state.remaining.length > 0 && (
-            <div className="left">
-              <p className="label" style={{ margin: 0, color: "var(--navy-muted)", fontSize: 15 }}>
-                What&rsquo;s left
-              </p>
-              <Budgets state={state} />
-            </div>
-          )}
-        </section>
-        <Ask state={state} refresh={refresh} post={post} />
-        <Spending state={state} post={post} title="Your requests" />
-      </div>
-    );
-  }
-
-  const setUp = Boolean(state.rulesText) && state.paypal.linked;
-  if (setUp) {
-    const waiting = state.purchases.filter((p) => p.status === "waiting");
-    return (
-      <>
-        <h1 className="greeting">Hello{state.ownerName ? `, ${state.ownerName}` : ""}.</h1>
-        <p className="lead" style={{ marginBottom: 0 }}>
-          {waiting.length
-            ? `${waiting.length === 1 ? "One request is" : `${waiting.length} requests are`} waiting for your OK.`
-            : "Everything is within your rules."}
-        </p>
-        <div className="dash">
-          <div className="dash-main">
-            <NeedsYourOk state={state} post={post} />
-            <Ask state={state} refresh={refresh} post={post} />
-            <Spending state={state} post={post} title="Activity" />
-          </div>
-          <aside className="dash-side">
-            <MoneyCard state={state} label="Spent this month" />
-            <Settings state={state} post={post} />
-            <People state={state} post={post} />
-          </aside>
-        </div>
-      </>
-    );
-  }
-
+function Onboarding({ state, setState, post }: { state: AppState; setState: (s: AppState) => void; post: Post }) {
+  const [editing, setEditing] = useState(false);
+  const step = state.humanCheck.needed ? 0 : !state.rulesText || editing ? 1 : 2;
   return (
-    <>
-      <Landing />
-      <section id="setup" className="setup">
-        <h2>Set up your allowance</h2>
-        <p className="lead">Two minutes. You can change everything later.</p>
-        {state.humanCheck.needed && <Welcome siteKey={state.humanCheck.siteKey} setState={setState} />}
-        <div className="panel">
-          <div className="step">
-            <StepTitle n={1} done={Boolean(state.rulesText)}>
-              Set your rules
-            </StepTitle>
-            <Rules state={state} post={post} />
-          </div>
-          <div className="step">
-            <StepTitle n={2} done={state.paypal.linked}>
-              Link PayPal
-            </StepTitle>
-            <PayPal state={state} post={post} setState={setState} />
-          </div>
-          <div className="step">
-            <StepTitle n={3} done={false}>
-              Try it
-            </StepTitle>
-            <p className="lead">
-              Once both are done, ask for something here, then invite someone you look after from their own phone.
-            </p>
-          </div>
-        </div>
-      </section>
-    </>
-  );
-}
-
-// A first visit: say what it is, and show it happening on a phone.
-function Landing() {
-  return (
-    <>
-      <div className="hero bleed">
-        <div className="hero-inner">
-          <div>
-            <h1>
-              Give your shopping agent an <em>allowance</em>, not your wallet.
-            </h1>
-            <p className="sub">
-              The people you look after ask for what they need, in their own words. An AI agent finds it in real shops and
-              pays with your PayPal, only within rules you set. Anything else comes to your phone first.
-            </p>
-            <div className="cta">
-              <button className="big" onClick={() => document.getElementById("setup")?.scrollIntoView({ block: "start" })}>
-                Set up an allowance
-              </button>
-              <span className="fine">PayPal sandbox. No real money moves.</span>
-            </div>
-          </div>
-          <div className="stage" aria-hidden>
-            <div className="device">
-              <div className="screen">
-                <div className="island" />
-                <div className="status">
-                  <span>9:41</span>
-                  <span>100%</span>
-                </div>
-                <div className="mini-bar">
-                  <span className="mark">A</span>Allowance
-                </div>
-                <div className="hi">Hi Mum.</div>
-                <div className="mini-card">
-                  <div className="l">Groceries left this week</div>
-                  <div className="n">$43.53</div>
-                  <div className="track">
-                    <span />
-                  </div>
-                </div>
-                <div className="mini-ask">A warm scarf, under $25</div>
-                <div className="mini-speak">Speak</div>
-                <div className="mini-row">
-                  <span className="sq" />
-                  <span>
-                    Winter scarf · $16.47
-                    <br />
-                    <span className="w">Waiting for Brian</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="push">
-              <div className="head">
-                <span className="mark">A</span>
-                ALLOWANCE
-                <span className="when">now</span>
-              </div>
-              <div className="t">Mum wants $16.47 at landsend.com</div>
-              <div className="b">Cashtouch Pattern Winter Scarf. First purchase from this shop.</div>
-              <div className="acts">
-                <span>Approve</span>
-                <span>Decline</span>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="screen onboard">
+      <div className="steps-dots" aria-label={`Step ${Math.max(step, 1)} of 2`}>
+        <i className={step >= 1 ? "on" : ""} />
+        <i className={step >= 2 ? "on" : ""} />
       </div>
-
-      <div className="facts bleed">
-        <div className="facts-inner">
-          <div className="fact">
-            <b>63 million</b>
-            <span>Americans care for a family member</span>
-            <small>AARP and National Alliance for Caregiving, 2025</small>
+      {step === 0 && <Welcome siteKey={state.humanCheck.siteKey ?? ""} setState={setState} />}
+      {step === 1 && (
+        <>
+          <p className="intro phone-only">Pocket money for the AI agent that shops for your family.</p>
+          <h1 className="serif">What may it spend?</h1>
+          <p className="lede">Say it or type it, the way you&rsquo;d tell a person.</p>
+          <RulesEditor state={state} post={post} onDone={() => setEditing(false)} />
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <h1 className="serif">Now link PayPal.</h1>
+          <p className="lede">Once, in PayPal&rsquo;s own window. Allowance never sees your login.</p>
+          <div className="card">
+            <RuleLines lines={state.rulesSummary} />
+            <button className="text" onClick={() => setEditing(true)}>
+              Change rules
+            </button>
           </div>
-          <div className="fact">
-            <b>18+</b>
-            <span>to hold a PayPal account of your own, so teens can&rsquo;t</span>
-            <small>PayPal user agreement</small>
+          <div style={{ marginTop: 18 }}>
+            <PayPalLink state={state} setState={setState} />
           </div>
-          <div className="fact">
-            <b>0</b>
-            <span>payments outside your rules without your OK</span>
-            <small>Checked by plain code, not by the AI</small>
-          </div>
-        </div>
-      </div>
-
-      <div className="how">
-        <h2>How it works</h2>
-        <p className="lead">Three things, once. Then it just works.</p>
-        <div className="tiles">
-          <div className="tile yellow">
-            <h3>Set the rules in your words</h3>
-            <p>Type them or say them. The agent can never pay outside them.</p>
-            <div className="ui">
-              <div className="ui-card">&ldquo;$60 a week on groceries. Gifts up to $40. No subscriptions.&rdquo;</div>
-              <div className="ui-card">
-                <span className="k">Understood</span>
-                <br />
-                Groceries: $60 a week · Gifts: up to $40
-              </div>
-            </div>
-          </div>
-          <div className="tile white">
-            <h3>Invite someone you look after</h3>
-            <p>Mum, or your teenager, gets a link. They ask from their own phone.</p>
-            <div className="ui">
-              <div className="ui-card">
-                <span className="k">Mum asked</span>
-                <br />
-                Bread and milk for the week
-              </div>
-              <div className="ui-card">
-                <span className="ok">Paid $8.40 with PayPal</span>
-                <br />
-                <span className="k">Within the groceries budget</span>
-              </div>
-            </div>
-          </div>
-          <div className="tile navy">
-            <h3>Approve from your lock screen</h3>
-            <p>Anything outside your rules comes to you first. One tap, and PayPal pays.</p>
-            <div className="ui">
-              <div className="ui-card">
-                <b>Mum wants $16.47</b>
-                <br />
-                <span className="k">First purchase from landsend.com</span>
-                <div className="btns">
-                  <span>Approve</span>
-                  <span>Decline</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function StepTitle({ n, done, children }: { n: number; done: boolean; children: React.ReactNode }) {
-  return (
-    <h2 className="step-title">
-      <span className="step-n">{n}</span>
-      {children}
-      {done && <span className="done">Done</span>}
-    </h2>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -328,156 +240,258 @@ function StepTitle({ n, done, children }: { n: number; done: boolean; children: 
 function Welcome({ siteKey, setState }: { siteKey: string; setState: (s: AppState) => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="panel" style={{ marginBottom: 20 }}>
-      <h2 className="step-title">Before you start</h2>
-      <p className="lead">A quick check that you&rsquo;re a person. It keeps this demo free for everyone.</p>
+    <>
+      <h1 className="serif">First, a quick check.</h1>
+      <p className="lede">It keeps this demo free for everyone.</p>
       <HumanCheck siteKey={siteKey} onPassed={setState} onError={setError} />
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
+
+function RulesEditor({ state, post, onDone }: { state: AppState; post: Post; onDone: () => void }) {
+  const [text, setText] = useState(state.rulesText ?? EXAMPLE_RULES_TEXT);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const changed = text.trim() !== (state.rulesText ?? "");
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await post("/api/rules", { text });
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} aria-label="Your spending rules" />
+      <div className="row">
+        <button onClick={save} disabled={busy || !changed}>
+          {busy ? "Saving…" : "Save rules"}
+        </button>
+        <Speak value={text} onChange={setText} disabled={busy} className="quiet" />
+        {state.rulesText && (
+          <button className="text" onClick={onDone}>
+            Cancel
+          </button>
+        )}
+      </div>
       {error && <p className="error">{error}</p>}
     </div>
   );
 }
 
-// Requests from the people the payer looks after (or the payer's own) that need a yes or no.
-function NeedsYourOk({ state, post }: { state: AppState; post: Post }) {
+function RuleLines({ lines }: { lines: string[] }) {
+  return (
+    <div>
+      {lines.map((l, i) => (
+        <div className="rule-line" key={i}>
+          <b className="serif">{i + 1}</b>
+          <span>{l}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PayPalLink({ state, setState }: { state: AppState; setState: (s: AppState) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      {state.paypal.clientId ? (
+        <LinkPayPal clientId={state.paypal.clientId} onLinked={setState} onError={setError} />
+      ) : (
+        <p className="soft">PayPal isn&rsquo;t set up on this server yet.</p>
+      )}
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
+
+// ---------- The payer ----------
+
+function PayerHome({ state, post, open, more }: { state: AppState; post: Post; open: (id: string) => void; more: () => void }) {
   const waiting = state.purchases.filter((p) => p.status === "waiting");
-  if (!waiting.length) return null;
+  const recent = state.purchases.filter((p) => p.status !== "waiting").slice(0, 4);
   return (
-    <section className="needs-ok">
-      <h2>Needs your OK</h2>
-      <ul className="plain">
-        {waiting.map((p) => {
-          const why = p.checks.find((c) => c.outcome === "ask")?.detail;
-          return (
-            <li key={p.id} className="ok-item">
-              <div className="product">
-                <Thumb src={p.image} />
-                <div style={{ minWidth: 0 }}>
-                  <div>
-                    <b>{p.memberName ?? "You"}</b> asked for {p.title}
-                  </div>
-                  <div className="small muted">
-                    {dollars(p.amountCents)} at {p.shop}
-                    {why ? ` · ${why}` : ""}
-                  </div>
-                </div>
-              </div>
-              <Actions purchase={p} post={post} role="payer" />
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <>
+      <h1 className="hello serif">Hello{state.ownerName ? `, ${state.ownerName}` : ""}.</h1>
+      <div className="wallet">
+        <div className="k">Spent this month</div>
+        <div className="big serif">
+          <Money cents={state.spentThisMonthCents} />
+        </div>
+        <Pots state={state} />
+      </div>
+
+      {waiting.length > 0 && <h2 className="title">Needs your OK</h2>}
+      {waiting.map((p) => (
+        <OkCard key={p.id} purchase={p} post={post} />
+      ))}
+
+      {recent.length > 0 && (
+        <>
+          <h2 className="title">Recent</h2>
+          <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
+            <Items purchases={recent} state={state} open={open} />
+          </div>
+          {state.purchases.length > recent.length + waiting.length && (
+            <button className="text see" onClick={more}>
+              See all
+            </button>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
-// The allowance as a card: what's been spent, and what's left of each budget.
-function MoneyCard({ state, label }: { state: AppState; label: string }) {
+function OkCard({ purchase: p, post }: { purchase: Purchase; post: Post }) {
+  const why = p.checks.find((c) => c.outcome === "ask")?.detail;
   return (
-    <section className="money-card">
-      <p className="label">{label}</p>
-      <p className="big-number">{dollars(state.spentThisMonthCents)}</p>
-      {state.remaining.length === 0 ? <p className="sub">No weekly or monthly budgets set.</p> : <Budgets state={state} />}
-    </section>
+    <div className="card ok-card">
+      <div className="who">{p.memberName ?? "You"} asked</div>
+      <div className="what">
+        <Pic src={p.image} />
+        <span className="name">{p.title}</span>
+        <span className="amt serif">{dollars(p.amountCents)}</span>
+      </div>
+      {why && <div className="why">{why}</div>}
+      <Actions purchase={p} post={post} role="payer" />
+    </div>
   );
 }
 
-function Budgets({ state }: { state: AppState }) {
+function Pots({ state }: { state: AppState }) {
+  if (!state.remaining.length) return null;
   return (
-    <ul className="plain budgets">
+    <div className="pots">
       {state.remaining.map((r) => {
         const left = Math.max(0, r.budgetCents - r.spentCents);
         const used = r.budgetCents ? Math.min(1, r.spentCents / r.budgetCents) : 0;
         return (
-          <li key={r.label}>
-            <div className="budget-text">
+          <div key={r.label}>
+            <div className="pot-head">
               <span>{r.label}</span>
-              <span className="amount">
-                {dollars(left)} <span className="muted">left this {r.period}</span>
+              <span>
+                {dollars(left)} left this {r.period}
               </span>
             </div>
-            <div className="bar" aria-hidden>
-              <span style={{ width: `${used > 0 ? Math.max(used * 100, 3) : 0}%` }} />
+            <div className="track" aria-hidden>
+              <i style={{ width: `${used > 0 ? Math.max(used * 100, 3) : 0}%` }} />
             </div>
-          </li>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
-// The payer's rules and PayPal, each one line until opened.
-function Settings({ state, post }: { state: AppState; post: Post }) {
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function AskBar({ ask, busy }: { ask: (request: string) => void; busy: boolean }) {
+  const [request, setRequest] = useState("");
+  const send = () => {
+    if (!request.trim()) return;
+    ask(request.trim());
+    setRequest("");
+  };
   return (
-    <section className="panel settings">
-      <h2>Your allowance</h2>
-      <div className="row-item">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="row-label">Rules</div>
-          {editing ? (
-            <Rules state={state} post={post} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
-          ) : (
-            <p className="row-text">{state.rulesSummary.join(" ")}</p>
-          )}
+    <form
+      className="askbar"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      {!request && (
+        <div className="chips">
+          {SUGGESTIONS.map((s) => (
+            <button type="button" key={s} onClick={() => setRequest(s)}>
+              {s}
+            </button>
+          ))}
         </div>
-        {!editing && (
-          <button className="link" onClick={() => setEditing(true)}>
-            Edit
-          </button>
-        )}
-      </div>
-      <div className="row-item">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="row-label">Paid with PayPal</div>
-          <p className="row-text">
-            {state.paypal.email && (
-              <span className="email" title={state.paypal.email}>
-                {state.paypal.email}
-              </span>
-            )}
-          </p>
-        </div>
-        <button className="link" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
-          Unlink
+      )}
+      <div className="askrow">
+        <input
+          type="text"
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
+          placeholder="Ask for something"
+          disabled={busy}
+          aria-label="What should the agent buy?"
+        />
+        <Speak value={request} onChange={setRequest} disabled={busy} className="quiet" />
+        <button type="submit" disabled={busy || !request.trim()}>
+          Ask
         </button>
       </div>
-      {error && <p className="error">{error}</p>}
-    </section>
+    </form>
   );
 }
 
-// The people the payer looks after: invite, see who joined, and get their requests on this phone.
+const SUGGESTIONS = ["A gardening gift for Mum, under $30", "Oat milk and coffee beans", "Printer paper"];
+
+function Activity({ state, open }: { state: AppState; open: (id: string) => void }) {
+  if (!state.purchases.length) return <p className="soft" style={{ marginTop: 24 }}>Nothing yet.</p>;
+  const days: { label: string; items: Purchase[] }[] = [];
+  for (const p of state.purchases) {
+    const label = dayLabel(p.createdAt);
+    const last = days[days.length - 1];
+    if (last?.label === label) last.items.push(p);
+    else days.push({ label, items: [p] });
+  }
+  return (
+    <>
+      <h1 className="hello serif">Activity</h1>
+      {days.map((d) => (
+        <div key={d.label}>
+          <p className="day">{d.label}</p>
+          <Items purchases={d.items} state={state} open={open} />
+        </div>
+      ))}
+    </>
+  );
+}
+
 function People({ state, post }: { state: AppState; post: Post }) {
   const [error, setError] = useState<string | null>(null);
   return (
-    <section className="panel people-panel">
-      <h2>People you look after</h2>
-      <p className="lead">
-        They ask from their own phone. Anything outside your rules comes to you first.
-      </p>
+    <>
+      <h1 className="hello serif">People</h1>
       {state.members.length > 0 && (
-        <ul className="plain people">
+        <div className="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
           {state.members.map((m) => (
-            <li key={m.id}>
-              <span className="avatar" aria-hidden>
+            <div className="person" key={m.id}>
+              <span className="face" aria-hidden>
                 {initial(m.name)}
               </span>
               <span className="name">{m.name}</span>
               <button
-                className="link"
+                className="text"
                 onClick={() => post(`/api/members/${m.id}`, undefined, "DELETE").catch((e) => setError(e.message))}
               >
                 Remove
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
       {error && <p className="error">{error}</p>}
-      <InviteForm ownerName={state.ownerName} />
-      <NotifyToggle pushKey={state.pushKey} />
-    </section>
+      <h2 className="title">Invite someone</h2>
+      <div className="card">
+        <InviteForm ownerName={state.ownerName} />
+      </div>
+      <h2 className="title">This phone</h2>
+      <div className="card">
+        <NotifyToggle pushKey={state.pushKey} />
+      </div>
+    </>
   );
 }
 
@@ -513,8 +527,8 @@ function InviteForm({ ownerName }: { ownerName: string | null }) {
   if (link) {
     const message = `${me} has given you a shopping allowance. Open this on your phone to start: ${link.url}`;
     return (
-      <div className="invite">
-        <p style={{ margin: "0 0 8px" }}>
+      <div className="stack">
+        <p style={{ margin: 0 }}>
           Send this to <b>{link.name}</b>. It works once, for 7 days.
         </p>
         <input type="text" readOnly value={link.url} aria-label="Invite link" onFocus={(e) => e.target.select()} />
@@ -530,12 +544,12 @@ function InviteForm({ ownerName }: { ownerName: string | null }) {
             {copied ? "Copied" : "Copy link"}
           </button>
           {typeof navigator !== "undefined" && "share" in navigator && (
-            <button className="secondary" onClick={() => navigator.share({ text: message }).catch(() => {})}>
+            <button className="quiet" onClick={() => navigator.share({ text: message }).catch(() => {})}>
               Share
             </button>
           )}
-          <button className="link" onClick={() => setLink(null)}>
-            Invite someone else
+          <button className="text" onClick={() => setLink(null)}>
+            Another
           </button>
         </div>
         {error && <p className="error">{error}</p>}
@@ -545,349 +559,320 @@ function InviteForm({ ownerName }: { ownerName: string | null }) {
 
   return (
     <form
-      className="invite"
+      className="stack"
       onSubmit={(e) => {
         e.preventDefault();
         if (name.trim()) create();
       }}
     >
-      <div className="fields">
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name, e.g. Mum" aria-label="Their name" />
-        {!ownerName && (
-          <input type="text" value={me} onChange={(e) => setMe(e.target.value)} placeholder="Your name, as they know you" aria-label="Your name" />
-        )}
-      </div>
-      <div className="row">
-        <button type="submit" disabled={busy || !name.trim() || !me.trim()}>
-          {busy ? "Creating…" : "Create invite link"}
-        </button>
-      </div>
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name, e.g. Mum" aria-label="Their name" />
+      {!ownerName && (
+        <input type="text" value={me} onChange={(e) => setMe(e.target.value)} placeholder="Your name, as they know you" aria-label="Your name" />
+      )}
+      <button type="submit" disabled={busy || !name.trim() || !me.trim()}>
+        {busy ? "Creating…" : "Create invite link"}
+      </button>
       {error && <p className="error">{error}</p>}
     </form>
   );
 }
 
-function Rules({
-  state,
-  post,
-  onSaved,
-  onCancel,
-}: {
-  state: AppState;
-  post: Post;
-  onSaved?: () => void;
-  onCancel?: () => void;
-}) {
-  const [text, setText] = useState(state.rulesText ?? EXAMPLE_RULES_TEXT);
-  const [busy, setBusy] = useState(false);
+function RulesTab({ state, post }: { state: AppState; post: Post }) {
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // A saved step folds into its summary until the person chooses to edit it.
-  const [open, setOpen] = useState(!state.rulesText || Boolean(onSaved));
-  const changed = text.trim() !== (state.rulesText ?? "");
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await post("/api/rules", { text });
-      if (onSaved) onSaved();
-      else setOpen(false);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <div className="folded">
-        <p className="row-text">{state.rulesSummary.join(" ")}</p>
-        <button className="link" onClick={() => setOpen(true)}>
-          Edit
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {!state.rulesText && <p className="lead">What may the agent spend? Write it the way you&rsquo;d say it, or press Speak.</p>}
-      <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Your spending rules" />
-      <div className="row">
-        <button onClick={save} disabled={busy || !changed}>
-          {busy ? "Saving…" : state.rulesText ? "Save changes" : "Save rules"}
-        </button>
-        <Speak value={text} onChange={setText} disabled={busy} />
-        {state.rulesText && (
-          <button
-            className="link"
-            onClick={() => {
-              setText(state.rulesText ?? "");
-              setOpen(false);
-              onCancel?.();
-            }}
-          >
-            Cancel
-          </button>
-        )}
-      </div>
-      {error && <p className="error">{error}</p>}
-    </div>
-  );
-}
-
-function PayPal({ state, post, setState }: { state: AppState; post: Post; setState: (s: AppState) => void }) {
-  const [error, setError] = useState<string | null>(null);
-
-  return (
-    <div>
-      {state.paypal.linked ? (
-        <div className="folded">
-          <p className="row-text">
-            Linked
-            {state.paypal.email && <span className="small muted email">{state.paypal.email}</span>}
-          </p>
-          <button className="link" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
-            Unlink
-          </button>
-        </div>
-      ) : (
-        <>
-          <p className="lead">
-            Link once, in PayPal&rsquo;s own window. Allowance never sees your login, and you can unlink at any time.
-          </p>
-          {state.paypal.clientId ? (
-            <div style={{ maxWidth: 320 }}>
-              <LinkPayPal clientId={state.paypal.clientId} onLinked={setState} onError={setError} />
-            </div>
-          ) : (
-            <p className="muted">PayPal isn&rsquo;t set up on this server yet.</p>
-          )}
-        </>
-      )}
-      {error && <p className="error">{error}</p>}
-    </div>
-  );
-}
-
-const SUGGESTIONS = [
-  "A birthday gift for my mum, she loves gardening, under $30",
-  "Oat milk and coffee beans for the week",
-  "A refill pack of printer paper",
-];
-
-const MEMBER_SUGGESTIONS = ["Bread and milk for the week", "A warm scarf, under $25", "Batteries for the TV remote"];
-
-function Ask({ state, post, refresh }: { state: AppState; post: Post; refresh: () => void }) {
-  const [request, setRequest] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [steps, setSteps] = useState<string[]>([]);
-  const [options, setOptions] = useState<Product[]>([]);
-  const [purchaseId, setPurchaseId] = useState<string | null>(null);
-  const [reply, setReply] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const member = state.role === "member";
-  const ready = state.rulesSummary.length > 0 && state.paypal.linked;
-  const purchase = state.purchases.find((p) => p.id === purchaseId) ?? null;
-  const finished = !busy && (purchase !== null || reply !== null);
-  const suggestions = member ? MEMBER_SUGGESTIONS : SUGGESTIONS;
-
-  function clear() {
-    setSteps([]);
-    setOptions([]);
-    setPurchaseId(null);
-    setReply(null);
-    setError(null);
-  }
-
-  async function ask() {
-    clear();
-    setBusy(true);
-    try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request }),
-      });
-      if (!res.ok || !res.body) throw new Error((await res.json()).error ?? "Something went wrong.");
-      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-      let buffer = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += value;
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) if (line) handle(JSON.parse(line) as AgentEvent);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-      refresh();
-    }
-  }
-
-  function handle(e: AgentEvent) {
-    if (e.type === "status") setSteps((s) => [...s, e.text]);
-    else if (e.type === "products") setOptions((o) => [...o, ...e.products.filter((p) => !o.some((x) => x.id === p.id))]);
-    else if (e.type === "purchase") {
-      setPurchaseId(e.purchase.id);
-      refresh();
-    } else if (e.type === "reply") setReply(e.text);
-    else if (e.type === "error") setError(e.text);
-  }
-
-  const searches = steps.filter((s) => s.startsWith("Searching")).length;
-
-  return (
-    <section className="ask-box">
-      <h2>{member ? "What do you need?" : "Ask for something"}</h2>
-      {!ready && (
-        <p className="lead">
-          {member
-            ? `Available once ${state.ownerName ?? "they"} has finished setting up.`
-            : "Available once your rules are saved and PayPal is linked."}
-        </p>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (request.trim()) ask();
-        }}
-      >
-        <input
-          type="text"
-          value={request}
-          onChange={(e) => setRequest(e.target.value)}
-          placeholder={member ? "Type it, or press Speak" : "What do you need?"}
-          disabled={!ready || busy}
-          aria-label="What should the agent buy?"
-        />
-        <div className="row">
-          <button type="submit" disabled={!ready || busy || !request.trim()}>
-            {busy ? "Working…" : "Ask"}
-          </button>
-          <Speak
-            value={request}
-            onChange={setRequest}
-            disabled={!ready || busy}
-            className={member ? "speak" : "secondary"}
-          />
-        </div>
-      </form>
-
-      {ready && !request && !busy && !finished && (
-        <div className="suggestions">
-          <p className="small muted">Try one of these</p>
-          <ul className="plain">
-            {suggestions.map((s) => (
-              <li key={s}>
-                <button className="link" onClick={() => setRequest(s)}>
-                  {s}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {error && <p className="error">{error}</p>}
-
-      {/* While it works, every step shows. When it's done, the steps fold into one line. */}
-      {busy && steps.length > 0 && (
-        <ul className="plain steps">
-          {steps.map((s, i) => (
-            <li key={i}>{s}</li>
-          ))}
-        </ul>
-      )}
-      {busy && options.length > 0 && !purchase && (
-        <div className="options">
-          {options.slice(0, 6).map((p) => (
-            <div className="option" key={p.id}>
-              <Thumb src={p.image} />
-              <span className="title">{p.title}</span>
-              <span className="amount muted">
-                {dollars(p.priceCents)} · {p.shop}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {finished && (
-        <div className="result">
-          {(searches > 0 || options.length > 0) && (
-            <p className="small muted" style={{ margin: "0 0 12px" }}>
-              Searched {searches === 1 ? "once" : `${searches} times`} · compared {options.length} products
-            </p>
-          )}
-          {purchase ? <Result purchase={purchase} reply={reply} post={post} state={state} /> : <p className="reply">{reply}</p>}
-          <div className="row" style={{ marginTop: 16 }}>
-            <button className="link" onClick={clear}>
-              Done
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function headline(p: Purchase, state: AppState): string {
-  const owner = state.ownerName ?? "the payer";
-  switch (p.status) {
-    case "paying":
-      return "Paying…";
-    case "paid":
-      return `Paid ${dollars(p.amountCents)} with PayPal`;
-    case "waiting":
-      return state.role === "member" ? `Waiting for ${owner}'s OK: ${dollars(p.amountCents)}` : `Needs your OK: ${dollars(p.amountCents)}`;
-    case "declined":
-      return state.role === "member" ? "Not approved" : "You declined this";
-    case "blocked":
-      return "Refused. Nothing was paid";
-    case "refunded":
-      return `Refunded ${dollars(p.amountCents)}`;
-    case "failed":
-      return "PayPal didn't take the payment";
-  }
-}
-
-function Result({ purchase, reply, post, state }: { purchase: Purchase; reply: string | null; post: Post; state: AppState }) {
   return (
     <>
-      <h3 className={purchase.status}>{headline(purchase, state)}</h3>
-      <div className="product">
-        <Thumb src={purchase.image} large />
-        <div>
-          <a href={purchase.url} target="_blank" rel="noreferrer">
-            {purchase.title}
-          </a>
-          <div className="small muted">
-            {purchase.shop} · counts against {purchase.category}
-          </div>
-        </div>
+      <h1 className="hello serif">Rules</h1>
+      <div className="card">
+        {editing ? (
+          <RulesEditor state={state} post={post} onDone={() => setEditing(false)} />
+        ) : (
+          <>
+            <RuleLines lines={state.rulesSummary} />
+            <button className="text" onClick={() => setEditing(true)}>
+              Change
+            </button>
+          </>
+        )}
       </div>
-      {reply && <p className="reply">{reply}</p>}
-      <Checks purchase={purchase} />
-      <Actions purchase={purchase} post={post} role={state.role} />
+      <h2 className="title">Pays with</h2>
+      <div className="card person">
+        <span className="pp" aria-hidden>
+          P
+        </span>
+        <span className="name">
+          PayPal
+          {state.paypal.email && <span className="s">{state.paypal.email}</span>}
+        </span>
+        <button className="text" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
+          Unlink
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+      <p className="small soft" style={{ margin: "14px 4px 0" }}>
+        Plain code checks every purchase against these rules before PayPal is called. The AI can&rsquo;t change them.
+      </p>
     </>
   );
 }
 
+// ---------- Someone the payer looks after: one number, one big button ----------
+
+function MemberHome({
+  state,
+  ask,
+  busy,
+  open,
+}: {
+  state: AppState;
+  ask: (request: string) => void;
+  busy: boolean;
+  open: (id: string) => void;
+}) {
+  const [request, setRequest] = useState("");
+  const owner = state.ownerName ?? "they";
+  const ready = state.rulesSummary.length > 0 && state.paypal.linked;
+  const [first, ...others] = state.remaining;
+  const send = () => {
+    if (!request.trim()) return;
+    ask(request.trim());
+    setRequest("");
+  };
+
+  return (
+    <div className="screen">
+      <h1 className="hello serif">Hi {state.memberName}.</h1>
+      {first && (
+        <div className="wallet">
+          <div className="k">
+            {first.label} left this {first.period}
+          </div>
+          <div className="big serif">
+            <Money cents={Math.max(0, first.budgetCents - first.spentCents)} />
+          </div>
+          {others.length > 0 && <Pots state={{ ...state, remaining: others }} />}
+        </div>
+      )}
+
+      {ready ? (
+        <>
+          <div className="talk-wrap">
+            <Speak value={request} onChange={setRequest} disabled={busy} className="talk" />
+          </div>
+          <p className="talk-hint">Say what you need. {owner} is asked if it&rsquo;s outside the allowance.</p>
+          <form
+            className="askrow"
+            style={{ marginTop: 14 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              send();
+            }}
+          >
+            <input
+              type="text"
+              value={request}
+              onChange={(e) => setRequest(e.target.value)}
+              placeholder="Or type it here"
+              disabled={busy}
+              aria-label="What do you need?"
+            />
+            <button type="submit" className="warm" disabled={busy || !request.trim()}>
+              Ask
+            </button>
+          </form>
+        </>
+      ) : (
+        <p className="talk-hint" style={{ marginTop: 24 }}>
+          Ready once {owner} has finished setting up.
+        </p>
+      )}
+
+      {state.purchases.length > 0 && (
+        <>
+          <h2 className="title">Your requests</h2>
+          <div className="card" style={{ paddingTop: 6, paddingBottom: 6 }}>
+            <Items purchases={state.purchases.slice(0, 6)} state={state} open={open} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Lists ----------
+
+function Items({ purchases, state, open }: { purchases: Purchase[]; state: AppState; open: (id: string) => void }) {
+  return (
+    <div className="list">
+      {purchases.map((p) => (
+        <button className="item" key={p.id} onClick={() => open(p.id)}>
+          <Pic src={p.image} />
+          <span style={{ minWidth: 0 }}>
+            <span className="t">{p.title}</span>
+            <span className="s">
+              {state.role === "payer" ? `${p.memberName ?? "You"} · ` : ""}
+              {p.shop}
+            </span>
+          </span>
+          <span className="r">
+            <span className="serif">{dollars(p.amountCents)}</span>
+            <span className={`st ${p.status}`}>{statusLabel(p, state)}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function statusLabel(p: Purchase, state: AppState): string {
+  if (p.status === "waiting") return state.role === "member" ? `With ${state.ownerName ?? "them"}` : "Needs your OK";
+  return { paying: "Paying", paid: "Paid", declined: "Declined", blocked: "Refused", refunded: "Refunded", failed: "Failed" }[
+    p.status
+  ];
+}
+
+// ---------- The sheet: the agent at work, or one purchase in full ----------
+
+function Sheet({
+  state,
+  post,
+  close,
+  run,
+  purchase: given,
+}: {
+  state: AppState;
+  post: Post;
+  close: () => void;
+  run?: Run;
+  purchase?: Purchase;
+}) {
+  const purchase = given ?? state.purchases.find((p) => p.id === run?.purchaseId) ?? null;
+  const busy = run?.busy ?? false;
+  const request = run?.request ?? purchase?.request ?? "";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [close]);
+
+  // The chosen product first, then what it was compared with.
+  const options = run
+    ? [...run.options].sort((a, b) => Number(b.id === purchase?.productId) - Number(a.id === purchase?.productId)).slice(0, 8)
+    : [];
+  const searches = run?.steps.filter((s) => s.startsWith("Searching")).length ?? 0;
+  const asker = purchase?.memberName && state.role === "payer" ? purchase.memberName : null;
+
+  return (
+    <div className="veil" onClick={close}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-label="Request" onClick={(e) => e.stopPropagation()}>
+        <div className="grip" />
+        {asker && <p className="asker">{asker} asked</p>}
+        <p className="bubble">{request}</p>
+
+        {busy && (
+          <p className="status" aria-live="polite">
+            <span className="dot" />
+            {run?.steps[run.steps.length - 1] ?? "Starting"}
+          </p>
+        )}
+        {run && !busy && options.length > 0 && (
+          <p className="status">
+            Searched {searches === 1 ? "once" : `${searches} times`}, compared {run.options.length}
+          </p>
+        )}
+
+        {options.length > 0 && (
+          <div className="shelf">
+            {options.map((p, i) => (
+              <div className={p.id === purchase?.productId ? "prod chosen" : "prod"} key={p.id} style={{ animationDelay: `${i * 60}ms` }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {p.image ? <img src={p.image} alt="" /> : <span className="ph" />}
+                <div className="p">{dollars(p.priceCents)}</div>
+                <div className="n">{p.shop}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {purchase && !run && <Verdict purchase={purchase} state={state} post={post} reply={null} />}
+        {purchase && <Checks purchase={purchase} />}
+        {purchase && run && !busy && <Verdict purchase={purchase} state={state} post={post} reply={run.reply} />}
+        {run && !busy && !purchase && run.reply && (
+          <div className="verdict declined">
+            <p className="reply" style={{ margin: 0 }}>
+              {run.reply}
+            </p>
+          </div>
+        )}
+        {run?.error && <p className="error">{run.error}</p>}
+        {purchase?.paypalOrderId && !run && <p className="small soft">PayPal order {purchase.paypalOrderId}</p>}
+
+        {!busy && (
+          <button className="quiet wide" style={{ marginTop: 16 }} onClick={close}>
+            Done
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MARKS = { ok: "✓", ask: "?", block: "×" } as const;
+
+// Every rule the purchase was checked against, ticked off one by one.
 function Checks({ purchase }: { purchase: Purchase }) {
   return (
-    <ul className="plain checks">
-      {purchase.checks.map((c) => (
-        <li key={c.label}>
-          <span className={c.outcome === "ok" ? "muted" : c.outcome}>{c.label}</span>
-          <span>{c.detail}</span>
+    <ul className="checks">
+      {purchase.checks.map((c, i) => (
+        <li key={c.label} style={{ animationDelay: `${i * 90}ms` }}>
+          <span className={`mark ${c.outcome === "ok" ? "" : c.outcome}`} aria-label={c.outcome}>
+            {MARKS[c.outcome]}
+          </span>
+          <span>
+            <b>{c.label}</b> <span className="soft">{c.detail}</span>
+          </span>
         </li>
       ))}
     </ul>
+  );
+}
+
+function Verdict({ purchase: p, state, post, reply }: { purchase: Purchase; state: AppState; post: Post; reply: string | null }) {
+  const owner = state.ownerName ?? "them";
+  const word = {
+    paying: "Paying…",
+    paid: "Paid",
+    waiting: state.role === "member" ? `Sent to ${owner}` : "Needs your OK",
+    declined: "Declined",
+    blocked: "Refused",
+    refunded: "Refunded",
+    failed: "Not paid",
+  }[p.status];
+  const reason =
+    p.status === "blocked"
+      ? p.checks.find((c) => c.outcome === "block")?.detail
+      : p.status === "waiting"
+        ? p.checks.find((c) => c.outcome === "ask")?.detail
+        : p.status === "paid"
+          ? `Counted under ${p.category}.`
+          : null;
+  return (
+    <div className={`verdict ${p.status}`}>
+      <div className="word serif">{word}</div>
+      <div className="row2">
+        <Pic src={p.image} />
+        <span className="name">
+          <a href={p.url} target="_blank" rel="noreferrer">
+            {p.title}
+          </a>
+          <span className="s">{p.shop}</span>
+        </span>
+        <span className="amt serif">{dollars(p.amountCents)}</span>
+      </div>
+      {(reason || reply) && <p className="reply">{reason ?? reply}</p>}
+      <Actions purchase={p} post={post} role={state.role} />
+    </div>
   );
 }
 
@@ -906,142 +891,55 @@ function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; rol
     }
   };
 
-  if (purchase.status === "waiting" && role === "member") {
-    return (
-      <>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="secondary" onClick={() => act("decline")} disabled={busy}>
-            Cancel request
-          </button>
-        </div>
-        {error && <p className="error">{error}</p>}
-      </>
+  let buttons: React.ReactNode = null;
+  if (purchase.status === "waiting" && role === "member")
+    buttons = (
+      <button className="quiet wide" onClick={() => act("decline")} disabled={busy}>
+        Cancel request
+      </button>
     );
-  }
-  if (purchase.status === "waiting") {
-    return (
-      <>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="yellow" onClick={() => act("approve")} disabled={busy}>
-            Approve and pay {dollars(purchase.amountCents)}
-          </button>
-          <button className="secondary" onClick={() => act("decline")} disabled={busy}>
-            Decline
-          </button>
-        </div>
-        {error && <p className="error">{error}</p>}
-      </>
-    );
-  }
-  if (purchase.status === "paid" && purchase.paypalCaptureId && role === "payer") {
-    return (
-      <>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="secondary" onClick={() => act("refund")} disabled={busy}>
-            Refund
-          </button>
-        </div>
-        {error && <p className="error">{error}</p>}
-      </>
-    );
-  }
-  return null;
-}
-
-function statusLabel(p: Purchase, state: AppState): string {
-  if (p.status === "waiting") return state.role === "member" ? `Waiting for ${state.ownerName ?? "OK"}` : "Needs your OK";
-  return { paying: "Paying", paid: "Paid", declined: "Declined", blocked: "Refused", refunded: "Refunded", failed: "Failed" }[
-    p.status
-  ];
-}
-
-// Purchases grouped by day, newest first, like a bank statement.
-function Spending({ state, post, title }: { state: AppState; post: Post; title: string }) {
-  const { purchases } = state;
-  const [open, setOpen] = useState<string | null>(null);
-  const [all, setAll] = useState(false);
-
-  // A notification tapped on a phone opens the page at that purchase.
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("purchase");
-    if (id) setOpen(id);
-  }, []);
-
-  if (!purchases.length) return null;
-  const shown = all ? purchases : purchases.slice(0, 8);
-  const days: { label: string; items: Purchase[] }[] = [];
-  for (const p of shown) {
-    const label = dayLabel(p.createdAt);
-    const last = days[days.length - 1];
-    if (last?.label === label) last.items.push(p);
-    else days.push({ label, items: [p] });
-  }
-
-  return (
-    <section className="activity">
-      <h2>{title}</h2>
-      {days.map((d) => (
-        <div key={d.label}>
-          <p className="day">{d.label}</p>
-          <ul className="plain ledger">
-            {d.items.map((p) => (
-              <li key={p.id}>
-                <button className="entry" onClick={() => setOpen(open === p.id ? null : p.id)} aria-expanded={open === p.id}>
-                  <Thumb src={p.image} />
-                  <span style={{ minWidth: 0 }}>
-                    <span className="title">{p.title}</span>
-                    <span className="meta">
-                      {state.role === "payer" && (
-                        <span className={p.memberName ? "avatar" : "avatar you"} aria-hidden>
-                          {initial(p.memberName ?? state.ownerName ?? "You")}
-                        </span>
-                      )}
-                      {state.role === "payer" ? `${p.memberName ?? "You"} · ` : ""}
-                      {p.shop}
-                    </span>
-                  </span>
-                  <span className="amount">
-                    {dollars(p.amountCents)}
-                    <span className={`small ${p.status}`} style={{ display: "block" }}>
-                      {statusLabel(p, state)}
-                    </span>
-                  </span>
-                </button>
-                {open === p.id && (
-                  <div className="detail">
-                    <p className="small" style={{ margin: 0 }}>
-                      <span className="muted">
-                        {p.memberName && state.role === "payer" ? `${p.memberName} asked:` : "You asked:"}
-                      </span>{" "}
-                      {p.request}
-                    </p>
-                    {p.why && (
-                      <p className="small" style={{ margin: "4px 0 0" }}>
-                        <span className="muted">Agent:</span> {p.why}
-                      </p>
-                    )}
-                    <Checks purchase={p} />
-                    {p.paypalOrderId && <p className="small muted">PayPal order {p.paypalOrderId}</p>}
-                    <Actions purchase={p} post={post} role={state.role} />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
-      {purchases.length > 8 && (
-        <button className="link" style={{ margin: "12px 0 6px" }} onClick={() => setAll(!all)}>
-          {all ? "Show fewer" : `Show all ${purchases.length}`}
+  else if (purchase.status === "waiting")
+    buttons = (
+      <div className="pair">
+        <button className="warm" onClick={() => act("approve")} disabled={busy}>
+          Approve
         </button>
-      )}
-    </section>
+        <button className="quiet" onClick={() => act("decline")} disabled={busy}>
+          Decline
+        </button>
+      </div>
+    );
+  else if (purchase.status === "paid" && purchase.paypalCaptureId && role === "payer")
+    buttons = (
+      <button className="quiet" onClick={() => act("refund")} disabled={busy} style={{ marginTop: 12 }}>
+        Refund
+      </button>
+    );
+  if (!buttons) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      {buttons}
+      {error && <p className="error">{error}</p>}
+    </div>
   );
 }
 
-function Thumb({ src, large }: { src: string | null; large?: boolean }) {
+// ---------- Small things ----------
+
+function Pic({ src }: { src: string | null }) {
   // eslint-disable-next-line @next/next/no-img-element
-  return src ? <img className={large ? "thumb large" : "thumb"} src={src} alt="" /> : <span className="thumb" />;
+  return src ? <img className="pic" src={src} alt="" /> : <span className="pic" />;
+}
+
+// Dollars large, cents small, like a price tag.
+function Money({ cents }: { cents: number }) {
+  const [whole, part] = (cents / 100).toFixed(2).split(".");
+  return (
+    <>
+      ${Number(whole).toLocaleString("en-US")}
+      <small>.{part}</small>
+    </>
+  );
 }
 
 async function loadState(): Promise<AppState> {

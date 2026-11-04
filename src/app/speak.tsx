@@ -39,7 +39,7 @@ export function Speak({
   value,
   onChange,
   disabled,
-  className = "secondary",
+  className = "quiet",
 }: {
   value: string;
   onChange: (text: string) => void;
@@ -110,8 +110,8 @@ export function Speak({
       >
         {listening ? "Stop" : "Speak"}
       </button>
-      {listening && <span className="small muted">Listening…</span>}
-      {problem && <span className="small error">{problem}</span>}
+      {listening && <span className="speak-note">Listening…</span>}
+      {problem && <span className="speak-note error">{problem}</span>}
     </>
   );
 }

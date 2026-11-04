@@ -67,7 +67,7 @@ export function NotifyToggle({ pushKey }: { pushKey: string | null }) {
       {status === "off" && (
         <>
           <p className="small muted">Get their requests on this phone, and approve them from the notification.</p>
-          <button className="secondary" onClick={turnOn}>
+          <button className="quiet" onClick={turnOn}>
             Turn on notifications
           </button>
         </>
