@@ -7,7 +7,8 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+  // The microphone is allowed for this site only, for speaking rules and requests.
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), browsing-topics=()" },
   // PayPal's login opens in a popup that reports back to this page, so popups keep their link to it.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
 ];
