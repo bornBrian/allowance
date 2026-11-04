@@ -9,6 +9,7 @@ import { EXAMPLE_RULES_TEXT } from "@/lib/rules";
 import { HumanCheck } from "./human-check";
 import { Icon, type IconName } from "./icons";
 import { LinkPayPal } from "./link-paypal";
+import { Logo } from "./logo";
 import { NotifyToggle } from "./notify-toggle";
 import { Photo } from "./photo";
 import { Speak } from "./speak";
@@ -41,6 +42,8 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("home");
   const [run, setRun] = useState<Run | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Just linked PayPal: show the last setup step (inviting family) before the home screen.
+  const [finishing, setFinishing] = useState(false);
 
   const refresh = useCallback(() => loadState().then(setState, () => {}), []);
 
@@ -121,8 +124,16 @@ export default function Home() {
   if (!state)
     return <div className="loading">{error ? <p className="error">{error}</p> : <span className="spinner" />}</div>;
 
-  if (state.role === "payer" && !(state.rulesText && state.paypal.linked))
-    return <Onboarding state={state} setState={setState} post={post} />;
+  if (state.role === "payer" && (!(state.rulesText && state.paypal.linked) || finishing))
+    return (
+      <Onboarding
+        state={state}
+        setState={setState}
+        post={post}
+        onLinked={() => setFinishing(true)}
+        onFinish={() => setFinishing(false)}
+      />
+    );
 
   const member = state.role === "member";
   const opened = state.purchases.find((p) => p.id === openId) ?? null;
@@ -177,17 +188,6 @@ function TabButton({ t, tab, setTab }: { t: (typeof TABS)[number]; tab: Tab; set
       <Icon name={t.icon} />
       {t.label}
     </button>
-  );
-}
-
-function Logo({ light }: { light?: boolean }) {
-  return (
-    <span className={light ? "logo light" : "logo"}>
-      <span className="mark" aria-hidden>
-        a
-      </span>
-      Allowance
-    </span>
   );
 }
 
@@ -601,16 +601,19 @@ function RulesPage({ state, post }: { state: AppState; post: Post }) {
           </>
         )}
       </div>
+      <div className="sec-head">
+        <h2>PayPal account</h2>
+      </div>
       <div className="panel person">
         <span className="pp" aria-hidden>
           P
         </span>
         <span className="name">
-          PayPal
+          PayPal <em className="paid">Connected</em>
           {state.paypal.email && <span>{state.paypal.email}</span>}
         </span>
         <button className="text" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
-          Unlink
+          Disconnect
         </button>
       </div>
       {error && <p className="error">{error}</p>}
@@ -1048,49 +1051,123 @@ function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; rol
   );
 }
 
-// ---------- Setting up: a story on one side, one question at a time on the other ----------
+// ---------- Setting up: what it is on one side, one step at a time on the other ----------
 
-function Onboarding({ state, setState, post }: { state: AppState; setState: (s: AppState) => void; post: Post }) {
+const SETUP_STEPS = ["Rules", "PayPal", "Family"];
+
+function Onboarding({
+  state,
+  setState,
+  post,
+  onLinked,
+  onFinish,
+}: {
+  state: AppState;
+  setState: (s: AppState) => void;
+  post: Post;
+  onLinked: () => void;
+  onFinish: () => void;
+}) {
   const [editing, setEditing] = useState(false);
-  const step = state.humanCheck.needed ? 0 : !state.rulesText || editing ? 1 : 2;
+  const step = state.humanCheck.needed ? 0 : !state.rulesText || editing ? 1 : !state.paypal.linked ? 2 : 3;
   return (
     <div className="onboard">
       <section className="hero-pane">
         <Logo light />
         <h1>Give your family&rsquo;s shopping agent an allowance, not your wallet.</h1>
-        <p>
-          They ask in their own words. An AI agent finds it in real shops and pays with your PayPal, only inside the
-          rules you set.
-        </p>
-        <PushPreview />
+        <p>An AI agent buys what the people you look after need, with your PayPal, and only inside your rules.</p>
+        <ul className="hero-steps">
+          <HeroStep icon="shield" title="You set the rules" text="In plain words, once." />
+          <HeroStep icon="search" title="They ask, the agent shops" text="By voice or text, from real shops." />
+          <HeroStep icon="card" title="PayPal pays, or you're asked" text="Anything outside the rules waits for your OK." />
+        </ul>
       </section>
       <section className="form-pane">
         <div className="form-card">
-          <div className="steps" aria-label={`Step ${Math.max(step, 1)} of 2`}>
-            <i className={step >= 1 ? "on" : ""} />
-            <i className={step >= 2 ? "on" : ""} />
-          </div>
+          <ol className="stepper" aria-label="Setup">
+            {SETUP_STEPS.map((name, i) => {
+              const n = i + 1;
+              const done = n < step;
+              return (
+                <li key={name} className={done ? "done" : n === step ? "on" : ""} aria-current={n === step ? "step" : undefined}>
+                  <span className="n">{done ? <Icon name="check" /> : n}</span>
+                  {name}
+                </li>
+              );
+            })}
+          </ol>
+
           {step === 0 && <Welcome siteKey={state.humanCheck.siteKey ?? ""} setState={setState} />}
+
           {step === 1 && (
             <>
               <h2>Set the rules</h2>
-              <p className="lede">Say it or type it, the way you&rsquo;d tell a person.</p>
+              <p className="lede">What may the agent spend? Say it or type it, the way you&rsquo;d tell a person.</p>
               <RulesEditor state={state} post={post} onDone={() => setEditing(false)} />
             </>
           )}
+
           {step === 2 && (
             <>
-              <h2>Link PayPal</h2>
-              <p className="lede">Once, in PayPal&rsquo;s own window. Allowance never sees your login.</p>
-              <div className="panel" style={{ marginBottom: 18 }}>
+              <h2>Connect your PayPal</h2>
+              <p className="lede">
+                The agent pays from this account, and only inside your rules. You log in on PayPal&rsquo;s own page;
+                Allowance never sees your password.
+              </p>
+              <div className="panel connect">
+                <div className="person">
+                  <span className="pp" aria-hidden>
+                    P
+                  </span>
+                  <span className="name">
+                    PayPal
+                    <span>Not connected yet</span>
+                  </span>
+                </div>
+                <PayPalLink
+                  state={state}
+                  onLinked={(s) => {
+                    onLinked();
+                    setState(s);
+                  }}
+                />
+                <p className="connect-note">PayPal opens in its own window. Nothing is charged now.</p>
+              </div>
+              {state.paypal.testBuyer && <TestBuyer buyer={state.paypal.testBuyer} />}
+              <div className="rules-recap">
+                <p className="small soft">Your rules</p>
                 <RuleList lines={state.rulesSummary} />
-                <button className="text" style={{ marginTop: 12 }} onClick={() => setEditing(true)}>
+                <button className="text" style={{ marginTop: 8 }} onClick={() => setEditing(true)}>
                   Change rules
                 </button>
               </div>
-              <PayPalLink state={state} setState={setState} />
             </>
           )}
+
+          {step === 3 && (
+            <>
+              <h2>Who do you look after?</h2>
+              <p className="lede">
+                Send them a link for their own phone, so they can ask the agent themselves. You can do this later.
+              </p>
+              <div className="panel person connected">
+                <span className="pp" aria-hidden>
+                  P
+                </span>
+                <span className="name">
+                  PayPal <em className="paid">Connected</em>
+                  {state.paypal.email && <span>{state.paypal.email}</span>}
+                </span>
+              </div>
+              <div className="panel">
+                <InviteForm ownerName={state.ownerName} />
+              </div>
+              <button className="light wide" style={{ marginTop: 14 }} onClick={onFinish}>
+                Go to my allowance
+              </button>
+            </>
+          )}
+
           <p className="fine">PayPal sandbox. No real money moves.</p>
         </div>
       </section>
@@ -1098,22 +1175,56 @@ function Onboarding({ state, setState, post }: { state: AppState; setState: (s: 
   );
 }
 
-// What the payer's phone shows when a request needs them.
-function PushPreview() {
+function HeroStep({ icon, title, text }: { icon: IconName; title: string; text: string }) {
   return (
-    <div className="push" aria-hidden>
-      <div className="ph-head">
-        <span className="mark">a</span>
-        ALLOWANCE
-        <span>now</span>
+    <li>
+      <span className="circle">
+        <Icon name={icon} />
+      </span>
+      <div>
+        <b>{title}</b>
+        <span>{text}</span>
       </div>
-      <b>Mum wants $16.47 at landsend.com</b>
-      <div className="ph-body">Winter scarf. First purchase from this shop.</div>
-      <div className="ph-acts">
-        <span>Approve</span>
-        <span>Decline</span>
+    </li>
+  );
+}
+
+// A PayPal sandbox buyer for judges and testers, when the server is set up with one.
+function TestBuyer({ buyer }: { buyer: { email: string; password: string } }) {
+  return (
+    <div className="test-buyer">
+      <p className="tb-head">Testing? Log in to PayPal with this sandbox buyer.</p>
+      <div className="tb-row">
+        <span>Email</span>
+        <Copyable text={buyer.email} />
+      </div>
+      <div className="tb-row">
+        <span>Password</span>
+        <Copyable text={buyer.password} />
       </div>
     </div>
+  );
+}
+
+function Copyable({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="copy"
+      onClick={() =>
+        navigator.clipboard.writeText(text).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          },
+          () => {},
+        )
+      }
+    >
+      <code>{text}</code>
+      <span>{copied ? "Copied" : "Copy"}</span>
+    </button>
   );
 }
 
@@ -1130,12 +1241,12 @@ function Welcome({ siteKey, setState }: { siteKey: string; setState: (s: AppStat
   );
 }
 
-function PayPalLink({ state, setState }: { state: AppState; setState: (s: AppState) => void }) {
+function PayPalLink({ state, onLinked }: { state: AppState; onLinked: (s: AppState) => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <>
       {state.paypal.clientId ? (
-        <LinkPayPal clientId={state.paypal.clientId} onLinked={setState} onError={setError} />
+        <LinkPayPal clientId={state.paypal.clientId} onLinked={onLinked} onError={setError} />
       ) : (
         <p className="soft">PayPal isn&rsquo;t set up on this server yet.</p>
       )}

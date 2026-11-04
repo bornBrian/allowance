@@ -1,4 +1,6 @@
 import { peekInvite } from "@/lib/db";
+import { Icon } from "../../icons";
+import { Logo } from "../../logo";
 import { JoinButton } from "./join-button";
 
 // What someone sees when they open the invite link they were sent.
@@ -10,12 +12,7 @@ export default async function Join({ params }: { params: Promise<{ token: string
   return (
     <div className="onboard">
       <section className="hero-pane">
-        <span className="logo light">
-          <span className="mark" aria-hidden>
-            a
-          </span>
-          Allowance
-        </span>
+        <Logo light />
         <h1>{invite ? `${owner} has given you an allowance, ${invite.name}.` : "This invite has expired."}</h1>
         <p>
           {invite
@@ -27,11 +24,35 @@ export default async function Join({ params }: { params: Promise<{ token: string
         <section className="form-pane">
           <div className="form-card">
             <h2>How it works</h2>
-            <ul className="rule-list" style={{ margin: "16px 0 24px" }}>
-              <li>Say what you need, or type it.</li>
-              <li>If it&rsquo;s within the allowance, it&rsquo;s paid straight away.</li>
-              <li>If not, {owner} is asked first.</li>
-            </ul>
+            <ol className="flow" style={{ margin: "18px 0 26px" }}>
+              <li>
+                <span className="circle">
+                  <Icon name="mic" />
+                </span>
+                <div>
+                  <b>Say what you need</b>
+                  <span>Or type it. The agent finds it in real shops.</span>
+                </div>
+              </li>
+              <li>
+                <span className="circle">
+                  <Icon name="check" />
+                </span>
+                <div>
+                  <b>Inside the allowance, it&rsquo;s paid</b>
+                  <span>Straight away, with {owner}&rsquo;s PayPal.</span>
+                </div>
+              </li>
+              <li>
+                <span className="circle">
+                  <Icon name="clock" />
+                </span>
+                <div>
+                  <b>Otherwise {owner} is asked</b>
+                  <span>You&rsquo;ll see the answer here.</span>
+                </div>
+              </li>
+            </ol>
             <JoinButton token={token} />
             <p className="fine">
               You won&rsquo;t see {invite.ownerName ? `${invite.ownerName}'s` : "their"} PayPal details, and you
