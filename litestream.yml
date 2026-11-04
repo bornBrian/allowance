@@ -1,0 +1,9 @@
+# Litestream copies the SQLite database to S3-compatible storage (Backblaze B2 here)
+# within a second of every change, and restores it when the server starts.
+# Only used when LITESTREAM_URL is set; see scripts/start.sh.
+dbs:
+  - path: ${DATABASE_PATH}
+    replica:
+      url: ${LITESTREAM_URL}
+      access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+      secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}

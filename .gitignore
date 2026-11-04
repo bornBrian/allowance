@@ -21,3 +21,6 @@ AGENTS.md
 
 # document page previews (scripts/build-docs.mjs --preview)
 docs/src/preview/
+
+# Litestream binary, downloaded at build time
+bin/

@@ -3,18 +3,19 @@
 # Blueprint is first applied, and keeps them as secret environment variables.
 #
 # Free plan: the service sleeps after 15 minutes without traffic (an uptime
-# monitor pinging /api/health keeps it awake), and its disk is not persistent,
-# so the SQLite file starts empty after each restart or deploy. The hard limit
-# on Claude spending is therefore the Anthropic workspace's own spend limit;
-# the in-app caps below are a second, softer layer.
+# monitor pinging /api/health keeps it awake), and its disk is not persistent.
+# Litestream keeps the data anyway: it restores the SQLite file from Backblaze B2
+# when the server starts and copies every change back within a second
+# (scripts/start.sh, litestream.yml). The hard limit on Claude spending is the
+# Anthropic workspace's own spend limit; the in-app caps below are a second layer.
 services:
   - type: web
     name: allowance
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    buildCommand: npm ci && npm run build && sh scripts/get-litestream.sh
+    startCommand: sh scripts/start.sh
     healthCheckPath: /api/health
     autoDeployTrigger: checksPass # deploy main only after GitHub Actions pass
     envVars:
@@ -49,4 +50,10 @@ services:
       - key: SANDBOX_BUYER_EMAIL
         sync: false
       - key: SANDBOX_BUYER_PASSWORD
+        sync: false
+      - key: LITESTREAM_URL
+        sync: false
+      - key: LITESTREAM_ACCESS_KEY_ID
+        sync: false
+      - key: LITESTREAM_SECRET_ACCESS_KEY
         sync: false
