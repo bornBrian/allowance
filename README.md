@@ -5,7 +5,7 @@ Give your shopping agent an allowance, not your wallet.
 <p>
   <img src="docs/images/payer.png" width="62%" alt="The payer's view: a request from Mum waiting for approval, and what's been spent this month">
   &nbsp;
-  <img src="docs/images/mum.png" width="30%" alt="Mum's view on her phone: what she can spend, and a box to ask for what she needs">
+  <img src="docs/images/mum.png" width="30%" alt="Mum's view on her phone: what she can spend, and one big Speak button">
 </p>
 
 Your mum doesn't need your card. She needs bread, a warm scarf, and now and then a new kettle. Your teenager can't have a PayPal account of their own until they're 18.
