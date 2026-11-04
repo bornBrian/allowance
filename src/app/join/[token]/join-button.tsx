@@ -26,7 +26,7 @@ export function JoinButton({ token }: { token: string }) {
 
   return (
     <>
-      <button className="warm wide" onClick={join} disabled={busy}>
+      <button className="wide" onClick={join} disabled={busy}>
         {busy ? "Joining…" : "Start"}
       </button>
       {error && <p className="error">{error}</p>}

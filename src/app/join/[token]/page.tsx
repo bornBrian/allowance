@@ -8,45 +8,38 @@ export default async function Join({ params }: { params: Promise<{ token: string
   const owner = invite?.ownerName ?? "Someone";
 
   return (
-    <div className="page solo">
-      <div className="app">
-        <header className="app-top">
-          <span className="brand">
-            <span className="coin" aria-hidden>
-              a
-            </span>
-            Allowance
+    <div className="onboard">
+      <section className="hero-pane">
+        <span className="logo light">
+          <span className="mark" aria-hidden>
+            a
           </span>
-        </header>
-        <div className="screen onboard">
-          {invite ? (
-            <>
-              <h1 className="serif">Hi {invite.name}.</h1>
-              <p className="lede">{owner} has given you an allowance for the things you need.</p>
-              <div className="wallet">
-                <div className="k">How it works</div>
-                <div className="pots">
-                  <div>Say what you need, or type it.</div>
-                  <div>If it&rsquo;s within the allowance, it&rsquo;s paid straight away.</div>
-                  <div>If not, {owner} is asked first.</div>
-                </div>
-              </div>
-              <div style={{ marginTop: 22 }}>
-                <JoinButton token={token} />
-              </div>
-              <p className="small soft" style={{ marginTop: 14 }}>
-                You won&rsquo;t see {invite.ownerName ? `${invite.ownerName}'s` : "their"} PayPal details, and you can&rsquo;t
-                change the rules.
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="serif">This invite has expired.</h1>
-              <p className="lede">It may have been used already. Ask the person who sent it for a new link.</p>
-            </>
-          )}
-        </div>
-      </div>
+          Allowance
+        </span>
+        <h1>{invite ? `${owner} has given you an allowance, ${invite.name}.` : "This invite has expired."}</h1>
+        <p>
+          {invite
+            ? "Ask for what you need by just saying it. An agent finds it in real shops and pays for it."
+            : "It may have been used already. Ask the person who sent it for a new link."}
+        </p>
+      </section>
+      {invite && (
+        <section className="form-pane">
+          <div className="form-card">
+            <h2>How it works</h2>
+            <ul className="rule-list" style={{ margin: "16px 0 24px" }}>
+              <li>Say what you need, or type it.</li>
+              <li>If it&rsquo;s within the allowance, it&rsquo;s paid straight away.</li>
+              <li>If not, {owner} is asked first.</li>
+            </ul>
+            <JoinButton token={token} />
+            <p className="fine">
+              You won&rsquo;t see {invite.ownerName ? `${invite.ownerName}'s` : "their"} PayPal details, and you
+              can&rsquo;t change the rules.
+            </p>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
