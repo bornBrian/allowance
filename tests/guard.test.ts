@@ -95,6 +95,18 @@ describe("decide", () => {
     expect(run({ url: "http://www.target.com/p/1" }).verdict).toBe("block");
   });
 
+  it("accepts Channel3's own buy link for the shop", () => {
+    const d = run({ url: "https://buy.trychannel3.com/WTNyxsL-c2Op?o=01M2B5&aid=01M6JP" });
+    expect(d.verdict).toBe("pay");
+    expect(d.checks.find((c) => c.label === "Shop link")?.detail).toBe("Channel3 buy link for target.com.");
+  });
+
+  it("refuses look-alikes of Channel3's buy link", () => {
+    expect(run({ url: "https://buy.trychannel3.com.evil.example/x" }).verdict).toBe("block");
+    expect(run({ url: "https://evil-buy.trychannel3.com/x" }).verdict).toBe("block");
+    expect(run({ url: "http://buy.trychannel3.com/x" }).verdict).toBe("block");
+  });
+
   it("asks before a shop that hasn't been used and isn't trusted", () => {
     const d = run({ shop: "gardeners.com", url: "https://www.gardeners.com/trowel" });
     expect(d.verdict).toBe("ask");

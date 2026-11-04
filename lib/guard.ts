@@ -53,6 +53,10 @@ export interface GuardInput {
   requestMaxCents?: number | null; // a price the person named in this request ("under $30")
 }
 
+// Channel3 gives every offer as a link on its own buy domain, which forwards to
+// the shop named in the offer. Only this exact host is accepted.
+const PROVIDER_LINK_HOSTS = ["buy.trychannel3.com"];
+
 const SUBSCRIPTION_WORDS = /subscri|membership|auto-?renew|monthly plan|annual plan|per month|\/mo\b/i;
 const REPEAT_WINDOW_DAYS = 7;
 
@@ -78,12 +82,17 @@ export function decide({ proposal, checkout, rules, history, now, requestMaxCent
     add("Price", "ok", `${money(proposal.priceCents)}.`);
   }
 
-  // 2. The link has to go to the shop it claims to be from.
+  // 2. The link has to go to the shop it claims to be from, or be the product
+  //    data provider's own buy link for that shop. Both the link and the shop
+  //    come from the provider's API, never from the model or a product page.
   const host = hostOf(proposal.url);
-  if (!host || !proposal.url.startsWith("https://") || !(host === shop || host.endsWith("." + shop))) {
-    add("Shop link", "block", `The link doesn't lead to ${shop}.`);
-  } else {
+  const https = proposal.url.startsWith("https://");
+  if (https && host && (host === shop || host.endsWith("." + shop))) {
     add("Shop link", "ok", `Goes to ${shop}.`);
+  } else if (https && host && PROVIDER_LINK_HOSTS.includes(host)) {
+    add("Shop link", "ok", `Channel3 buy link for ${shop}.`);
+  } else {
+    add("Shop link", "block", `The link doesn't lead to ${shop}.`);
   }
 
   // 3. Things the person never wants bought.

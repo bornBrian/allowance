@@ -2,15 +2,14 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { addAiSpend, aiSpentToday } from "./db";
+import { addAiSpend, aiSpentToday, aiSpentTotal } from "./db";
 import { LimitReached, UserError } from "./errors";
 import { RulesSchema, type Rules } from "./rules";
 
-export const MODEL = "claude-opus-5-5";
-
-// Server-side fallback: if a request is declined, the API retries it on a
-// suitable model inside the same call.
-export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
+// Claude Haiku 5.5: fast and low-cost, and enough for reading rules, sorting a
+// request into a budget, and choosing a product. The model never decides about
+// money (the guard does), so a smaller model costs nothing in safety.
+export const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-5-5";
 
 let client: Anthropic | null = null;
 
@@ -20,18 +19,14 @@ export function anthropic(): Anthropic {
   return client;
 }
 
-// A hard daily ceiling on what the hosted demo spends on Claude, whoever is using it.
-export function checkDailyLimit() {
-  const cap = Number(process.env.DAILY_AI_BUDGET_USD ?? "5");
-  if (aiSpentToday() >= cap) {
-    const now = Date.now();
-    const midnight = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1);
-    throw new LimitReached("The demo has used its AI budget for today. Please try again tomorrow.", Math.ceil((midnight - now) / 1000));
-  }
-}
-
-// Claude Opus 5.5 prices, US dollars per million tokens.
-const PRICE = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 };
+// US dollars per million tokens. An unknown model is priced as the dearest, so
+// the caps below can only err towards stopping early.
+const PRICES: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheRead: 0.01 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+};
+const DEAREST = PRICES["claude-opus-5-5"];
 
 interface Usage {
   input_tokens: number;
@@ -40,22 +35,47 @@ interface Usage {
   cache_read_input_tokens?: number | null;
 }
 
+export function costUsd(model: string, u: Usage): number {
+  const price = PRICES[model] ?? DEAREST;
+  return (
+    (u.input_tokens * price.input +
+      u.output_tokens * price.output +
+      (u.cache_creation_input_tokens ?? 0) * price.cacheWrite +
+      (u.cache_read_input_tokens ?? 0) * price.cacheRead) /
+    1_000_000
+  );
+}
+
 export function recordUsage(u: Usage) {
-  const usd =
-    (u.input_tokens * PRICE.input +
-      u.output_tokens * PRICE.output +
-      (u.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite +
-      (u.cache_read_input_tokens ?? 0) * PRICE.cacheRead) /
-    1_000_000;
-  addAiSpend(usd);
+  addAiSpend(costUsd(MODEL, u));
+}
+
+// Two hard ceilings on Claude spending, whoever is using the app: one per UTC
+// day, and one for the whole life of the demo. The API key's credit is shared,
+// so the total cap is what protects everything else that uses it.
+export function checkAiBudget() {
+  const total = Number(process.env.AI_TOTAL_BUDGET_USD ?? "1");
+  if (aiSpentTotal() >= total) {
+    throw new LimitReached("The demo has used all of its AI budget. Spending and past purchases can still be viewed.", 86_400);
+  }
+  const daily = Number(process.env.DAILY_AI_BUDGET_USD ?? "0.25");
+  if (aiSpentToday() >= daily) {
+    const now = new Date();
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    throw new LimitReached(
+      "The demo has used its AI budget for today. Please try again tomorrow.",
+      Math.ceil((midnight - now.getTime()) / 1000),
+    );
+  }
 }
 
 // Turns "$60 a week on groceries, gifts up to $40..." into structured rules.
 export async function parseRules(text: string): Promise<Rules> {
-  checkDailyLimit();
+  checkAiBudget();
   const response = await anthropic().messages.parse({
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: 1500,
+    thinking: { type: "disabled" },
     output_config: { effort: "low", format: zodOutputFormat(RulesSchema) },
     system:
       "You turn a person's plain-language spending rules for their shopping agent into structured rules. " +
@@ -82,11 +102,12 @@ export type Classification = z.infer<typeof Classification>;
 // before any product data is seen. A product page can't move a purchase into
 // a roomier budget, because the category is settled here first.
 export async function classifyRequest(request: string, rules: Rules): Promise<Classification> {
-  checkDailyLimit();
+  checkAiBudget();
   const names = rules.categories.map((c) => c.name).join(", ") || "none";
   const response = await anthropic().messages.parse({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: 500,
+    thinking: { type: "disabled" },
     output_config: { effort: "low", format: zodOutputFormat(Classification) },
     system: `Classify a shopping request. The person's spending categories are: ${names}.`,
     messages: [{ role: "user", content: request }],

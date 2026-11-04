@@ -300,6 +300,13 @@ export function aiSpentToday(): number {
   return (row?.micro_usd ?? 0) / 1_000_000;
 }
 
+export function aiSpentTotal(): number {
+  const row = conn().prepare("SELECT COALESCE(SUM(micro_usd), 0) AS total FROM ai_spend").get() as unknown as {
+    total: number;
+  };
+  return row.total / 1_000_000;
+}
+
 export function addAiSpend(usd: number) {
   conn().prepare(
     `INSERT INTO ai_spend (day, micro_usd) VALUES (?, ?)

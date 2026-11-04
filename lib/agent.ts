@@ -2,7 +2,7 @@ import "server-only";
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { searchProducts, type Product } from "./channel3";
-import { anthropic, checkDailyLimit, classifyRequest, FALLBACK_BETA, MODEL, recordUsage } from "./claude";
+import { anthropic, checkAiBudget, classifyRequest, MODEL, recordUsage } from "./claude";
 import type { Purchase, Wallet } from "./db";
 import { describeRules } from "./describe";
 import { UserError } from "./errors";
@@ -49,7 +49,7 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
     }),
     run: async ({ query, max_price }) => {
       emit({ type: "status", text: `Searching for “${query}”` });
-      const products = await searchProducts(query, max_price);
+      const products = await searchProducts(query, max_price, 6);
       for (const p of products) seen.set(p.id, p);
       emit({ type: "products", products });
       if (!products.length) return "No products found. Try a different search.";
@@ -62,7 +62,7 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
           shop: p.shop,
           rating: p.rating,
           reviews: p.ratingCount,
-          features: p.features,
+          features: p.features.slice(0, 2),
         })),
       );
     },
@@ -94,15 +94,15 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
     },
   });
 
-  checkDailyLimit();
+  checkAiBudget();
   emit({ type: "status", text: "Looking for options" });
   const runner = anthropic().beta.messages.toolRunner({
     model: MODEL,
-    max_tokens: 16000,
-    max_iterations: 8,
-    betas: [FALLBACK_BETA],
-    fallbacks: "default",
-    output_config: { effort: "medium" },
+    // Small and cheap on purpose: a few searches and one buy fit easily.
+    max_tokens: 2000,
+    max_iterations: 6,
+    thinking: { type: "disabled" },
+    output_config: { effort: "low" },
     system:
       "You are a careful shopping agent spending a person's allowance. You find one good product for their " +
       "request and ask to buy it with the buy tool. You can't move money yourself; a guard applies their rules.\n\n" +
