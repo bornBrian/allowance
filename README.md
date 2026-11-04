@@ -74,7 +74,7 @@ The hosted demo has a daily cap on what it spends on Claude (`DAILY_AI_BUDGET_US
 | [Software Requirements Specification](docs/srs.pdf): 8 use cases, 85 requirements with acceptance criteria, 19 business rules, traceability | ISO/IEC/IEEE 29148 |
 | [Software Architecture Document](docs/sad.pdf): context, containers, layers, runtime flows, data, concurrency, deployment, security, decisions | ISO/IEC/IEEE 42010 |
 
-More documents and the working notes are listed in [docs/](docs/README.md).
+More documents are listed in [docs/](docs/README.md).
 
 ## Run it locally
 

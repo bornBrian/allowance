@@ -14,4 +14,4 @@ This is a hackathon project that runs against the PayPal **sandbox**. No real mo
 
 ## How Allowance is protected
 
-[docs/security.md](docs/security.md) describes the threat model and every control in place.
+The security requirements are in the [Software Requirements Specification](../docs/srs.pdf) (section 3.8.3) and the controls by layer in the [Software Architecture Document](../docs/sad.pdf) (section 10).
