@@ -18,3 +18,6 @@ CLAUDE.md
 
 # written by next dev for AI coding tools
 AGENTS.md
+
+# document page previews (scripts/build-docs.mjs --preview)
+docs/src/preview/
