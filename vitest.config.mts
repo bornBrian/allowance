@@ -2,6 +2,8 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // An explicit root, so running from "d:\" and "D:\" on Windows finds the same files.
+  root: import.meta.dirname,
   resolve: {
     alias: {
       "@": import.meta.dirname,
