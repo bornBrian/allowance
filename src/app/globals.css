@@ -542,39 +542,6 @@ textarea:focus {
   background: var(--sky);
 }
 
-/* ---------- Quick actions (phone) ---------- */
-
-.quick {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin: 22px 0 4px;
-}
-
-.quick button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  color: var(--ink);
-  font-size: 12.5px;
-  font-weight: 500;
-  padding: 0;
-  min-height: 0;
-}
-
-.quick .circle {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--card);
-  box-shadow: var(--shadow);
-  display: grid;
-  place-items: center;
-  color: var(--navy);
-}
-
 /* ---------- Asking ---------- */
 
 .ask {
@@ -1227,43 +1194,6 @@ span.thumb {
   font-size: 14px;
 }
 
-/* What the panel shows before anything is asked (computer only). */
-.flow {
-  list-style: none;
-  padding: 0;
-  margin: 22px 0 0;
-  display: grid;
-  gap: 16px;
-}
-
-.flow li {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.flow .circle {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: var(--blue-wash);
-  color: var(--navy);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.flow b {
-  display: block;
-  font-weight: 600;
-}
-
-.flow span {
-  display: block;
-  font-size: 13px;
-  color: var(--soft);
-}
-
 .mini {
   margin: 28px 0 12px;
   font-size: 13px;
@@ -1661,42 +1591,6 @@ span.thumb {
 
 /* ---------- Setup: steps, PayPal connection, test buyer ---------- */
 
-.hero-steps {
-  list-style: none;
-  padding: 0;
-  margin: 32px 0 0;
-  display: grid;
-  gap: 18px;
-  max-width: 420px;
-}
-
-.hero-steps li {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.hero-steps .circle {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.12);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.hero-steps b {
-  display: block;
-  font-weight: 600;
-}
-
-.hero-steps span {
-  display: block;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.72);
-}
-
 .stepper {
   list-style: none;
   padding: 0;
@@ -1839,4 +1733,93 @@ span.thumb {
   margin-top: 10px;
   font-size: 12.5px;
   color: var(--soft);
+}
+
+/* ---------- Numbered how-it-works lines (no icon tiles) ---------- */
+
+.steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+  display: grid;
+}
+
+.steps-list li {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.steps-list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.steps-list .num {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--blue);
+}
+
+.steps-list b {
+  display: block;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.steps-list li > span:last-child {
+  display: block;
+  font-size: 13.5px;
+  color: var(--soft);
+}
+
+.steps-list.on-blue {
+  margin-top: 32px;
+  max-width: 440px;
+}
+
+.steps-list.on-blue li {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.steps-list.on-blue .num {
+  color: var(--sky);
+}
+
+.steps-list.on-blue li > span:last-child {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -6px 0 14px -4px;
+  padding: 4px 6px;
+  min-height: 0;
+  background: none;
+  color: var(--soft);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.back .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.stepper li button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+}
+
+.stepper li button:hover {
+  text-decoration: underline;
 }

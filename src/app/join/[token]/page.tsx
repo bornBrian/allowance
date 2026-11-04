@@ -1,6 +1,6 @@
 import { peekInvite } from "@/lib/db";
-import { Icon } from "../../icons";
 import { Logo } from "../../logo";
+import { Step } from "../../steps";
 import { JoinButton } from "./join-button";
 
 // What someone sees when they open the invite link they were sent.
@@ -24,34 +24,10 @@ export default async function Join({ params }: { params: Promise<{ token: string
         <section className="form-pane">
           <div className="form-card">
             <h2>How it works</h2>
-            <ol className="flow" style={{ margin: "18px 0 26px" }}>
-              <li>
-                <span className="circle">
-                  <Icon name="mic" />
-                </span>
-                <div>
-                  <b>Say what you need</b>
-                  <span>Or type it. The agent finds it in real shops.</span>
-                </div>
-              </li>
-              <li>
-                <span className="circle">
-                  <Icon name="check" />
-                </span>
-                <div>
-                  <b>Inside the allowance, it&rsquo;s paid</b>
-                  <span>Straight away, with {owner}&rsquo;s PayPal.</span>
-                </div>
-              </li>
-              <li>
-                <span className="circle">
-                  <Icon name="clock" />
-                </span>
-                <div>
-                  <b>Otherwise {owner} is asked</b>
-                  <span>You&rsquo;ll see the answer here.</span>
-                </div>
-              </li>
+            <ol className="steps-list" style={{ margin: "18px 0 26px" }}>
+              <Step n={1} title="Say what you need" text="Or type it. The agent finds it in real shops." />
+              <Step n={2} title="Inside the allowance, it's paid" text={`Straight away, with ${owner}'s PayPal.`} />
+              <Step n={3} title={`Otherwise ${owner} is asked`} text="You'll see the answer here." />
             </ol>
             <JoinButton token={token} />
             <p className="fine">

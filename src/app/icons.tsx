@@ -59,6 +59,7 @@ const PATHS = {
   ),
   bell: <path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" />,
   undo: <path d="M9 7 4.5 11.5 9 16M5 11.5h9a5 5 0 0 1 0 10h-2" />,
+  back: <path d="M14.5 6 8.5 12l6 6" />,
 };
 
 export type IconName = keyof typeof PATHS;

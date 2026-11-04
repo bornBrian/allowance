@@ -13,6 +13,7 @@ import { Logo } from "./logo";
 import { NotifyToggle } from "./notify-toggle";
 import { Photo } from "./photo";
 import { Speak } from "./speak";
+import { Step } from "./steps";
 
 type Post = (url: string, body?: unknown, method?: string) => Promise<void>;
 type Tab = "home" | "activity" | "people" | "rules";
@@ -153,7 +154,7 @@ export default function Home() {
         ) : (
           <>
             {tab === "home" && (
-              <PayerHome state={state} post={post} ask={ask} busy={busy} open={setOpenId} setTab={setTab} goAsk={goAsk} />
+              <PayerHome state={state} post={post} ask={ask} busy={busy} open={setOpenId} setTab={setTab} />
             )}
             {tab === "activity" && <Activity state={state} open={setOpenId} />}
             {tab === "people" && <People state={state} post={post} />}
@@ -233,7 +234,6 @@ function PayerHome({
   busy,
   open,
   setTab,
-  goAsk,
 }: {
   state: AppState;
   post: Post;
@@ -241,7 +241,6 @@ function PayerHome({
   busy: boolean;
   open: (id: string) => void;
   setTab: (t: Tab) => void;
-  goAsk: () => void;
 }) {
   const waiting = state.purchases.filter((p) => p.status === "waiting");
   const recent = state.purchases.filter((p) => p.status !== "waiting").slice(0, 5);
@@ -268,13 +267,6 @@ function PayerHome({
         </div>
         <Pots state={state} />
       </section>
-
-      <div className="quick mobile-only">
-        <QuickAction icon="plus" label="Ask" onClick={goAsk} />
-        <QuickAction icon="receipt" label="Activity" onClick={() => setTab("activity")} />
-        <QuickAction icon="invite" label="Invite" onClick={() => setTab("people")} />
-        <QuickAction icon="shield" label="Rules" onClick={() => setTab("rules")} />
-      </div>
 
       <AskBox ask={ask} busy={busy} placeholder="Ask the agent for something" suggestions={SUGGESTIONS} />
 
@@ -309,17 +301,6 @@ function PayerHome({
 }
 
 const SUGGESTIONS = ["A gardening gift for Mum, under $30", "Oat milk and coffee beans", "Printer paper"];
-
-function QuickAction({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick}>
-      <span className="circle">
-        <Icon name={icon} />
-      </span>
-      {label}
-    </button>
-  );
-}
 
 function AskBox({
   ask,
@@ -896,10 +877,10 @@ function Idle({ state }: { state: AppState }) {
         <h2>Your agent</h2>
       </div>
       <p className="soft small">Ask for something and watch it work here.</p>
-      <ol className="flow">
-        <FlowStep icon="search" title="Finds" text="Compares real products from real shops." />
-        <FlowStep icon="shield" title="Checks" text="Plain code tests every rule. The AI can't skip it." />
-        <FlowStep icon="card" title="Pays" text="Inside the rules, PayPal pays at once. Otherwise you're asked." />
+      <ol className="steps-list">
+        <Step n={1} title="Finds" text="Compares real products from real shops." />
+        <Step n={2} title="Checks" text="Plain code tests every rule. The AI can't skip it." />
+        <Step n={3} title="Pays" text="Inside the rules, PayPal pays at once. Otherwise you're asked." />
       </ol>
       <p className="mini">Your rules</p>
       <RuleList lines={state.rulesSummary} />
@@ -907,19 +888,6 @@ function Idle({ state }: { state: AppState }) {
   );
 }
 
-function FlowStep({ icon, title, text }: { icon: IconName; title: string; text: string }) {
-  return (
-    <li>
-      <span className="circle">
-        <Icon name={icon} />
-      </span>
-      <div>
-        <b>{title}</b>
-        <span>{text}</span>
-      </div>
-    </li>
-  );
-}
 
 // The result, like a payment receipt: a big mark, what was bought, and the checks behind it.
 function Outcome({ purchase: p, state, post }: { purchase: Purchase; state: AppState; post: Post }) {
@@ -1076,11 +1044,11 @@ function Onboarding({
         <Logo light />
         <h1>Give your family&rsquo;s shopping agent an allowance, not your wallet.</h1>
         <p>An AI agent buys what the people you look after need, with your PayPal, and only inside your rules.</p>
-        <ul className="hero-steps">
-          <HeroStep icon="shield" title="You set the rules" text="In plain words, once." />
-          <HeroStep icon="search" title="They ask, the agent shops" text="By voice or text, from real shops." />
-          <HeroStep icon="card" title="PayPal pays, or you're asked" text="Anything outside the rules waits for your OK." />
-        </ul>
+        <ol className="steps-list on-blue">
+          <Step n={1} title="You set the rules" text="In plain words, once." />
+          <Step n={2} title="They ask, the agent shops" text="By voice or text, from real shops." />
+          <Step n={3} title="PayPal pays, or you're asked" text="Anything outside the rules waits for your OK." />
+        </ol>
       </section>
       <section className="form-pane">
         <div className="form-card">
@@ -1090,8 +1058,19 @@ function Onboarding({
               const done = n < step;
               return (
                 <li key={name} className={done ? "done" : n === step ? "on" : ""} aria-current={n === step ? "step" : undefined}>
-                  <span className="n">{done ? <Icon name="check" /> : n}</span>
-                  {name}
+                  {done && n === 1 ? (
+                    <button type="button" onClick={() => setEditing(true)} aria-label="Change your rules">
+                      <span className="n">
+                        <Icon name="check" />
+                      </span>
+                      {name}
+                    </button>
+                  ) : (
+                    <>
+                      <span className="n">{done ? <Icon name="check" /> : n}</span>
+                      {name}
+                    </>
+                  )}
                 </li>
               );
             })}
@@ -1109,6 +1088,10 @@ function Onboarding({
 
           {step === 2 && (
             <>
+              <button type="button" className="back" onClick={() => setEditing(true)}>
+                <Icon name="back" />
+                Back to rules
+              </button>
               <h2>Connect your PayPal</h2>
               <p className="lede">
                 The agent pays from this account, and only inside your rules. You log in on PayPal&rsquo;s own page;
@@ -1138,7 +1121,7 @@ function Onboarding({
                 <p className="small soft">Your rules</p>
                 <RuleList lines={state.rulesSummary} />
                 <button className="text" style={{ marginTop: 8 }} onClick={() => setEditing(true)}>
-                  Change rules
+                  Edit rules
                 </button>
               </div>
             </>
@@ -1172,20 +1155,6 @@ function Onboarding({
         </div>
       </section>
     </div>
-  );
-}
-
-function HeroStep({ icon, title, text }: { icon: IconName; title: string; text: string }) {
-  return (
-    <li>
-      <span className="circle">
-        <Icon name={icon} />
-      </span>
-      <div>
-        <b>{title}</b>
-        <span>{text}</span>
-      </div>
-    </li>
   );
 }
 
