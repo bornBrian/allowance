@@ -51,6 +51,8 @@ export interface GuardInput {
   history: PastPurchase[]; // paid purchases only
   now: Date;
   requestMaxCents?: number | null; // a price the person named in this request ("under $30")
+  // The other products the agent compared for this request, to spot a price that's too good to be true.
+  compared?: { title: string; priceCents: number }[];
 }
 
 // Channel3 gives every offer as a link on its own buy domain, which forwards to
@@ -59,8 +61,11 @@ const PROVIDER_LINK_HOSTS = ["buy.trychannel3.com"];
 
 const SUBSCRIPTION_WORDS = /subscri|membership|auto-?renew|monthly plan|annual plan|per month|\/mo\b/i;
 const REPEAT_WINDOW_DAYS = 7;
+// Under a quarter of what similar products cost counts as suspiciously cheap.
+const TOO_CHEAP = 0.25;
+const STOP_WORDS = new Set(["with", "for", "and", "the", "from", "this", "that", "your", "pack", "inch", "size", "black", "white"]);
 
-export function decide({ proposal, checkout, rules, history, now, requestMaxCents }: GuardInput): Decision {
+export function decide({ proposal, checkout, rules, history, now, requestMaxCents, compared = [] }: GuardInput): Decision {
   const checks: Check[] = [];
   const add = (label: string, outcome: Check["outcome"], detail: string) =>
     checks.push({ label, outcome, detail });
@@ -148,6 +153,17 @@ export function decide({ proposal, checkout, rules, history, now, requestMaxCent
     }
   }
 
+  // 5c. A price far below similar products is more likely a listing error than a bargain
+  // (a $10 "power lift recliner" that sells for $400 elsewhere). Ask before trusting it.
+  const typical = typicalPrice(proposal.title, compared);
+  if (typical !== null) {
+    if (amount < typical * TOO_CHEAP) {
+      add("Price sense", "ask", `Much cheaper than similar products (typically ${money(typical)}). It may be a listing error.`);
+    } else {
+      add("Price sense", "ok", `In line with similar products (typically ${money(typical)}).`);
+    }
+  }
+
   // 6. Category budget for this week or month.
   if (rule?.budget !== null && rule?.budget !== undefined) {
     const period = rule.period ?? "week";
@@ -224,6 +240,28 @@ export function money(c: number): string {
 
 export function normShop(shop: string): string {
   return shop.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+}
+
+// The median price of compared products that are clearly the same kind of thing:
+// their titles share at least two real words with this one. Needs three of them.
+export function typicalPrice(title: string, compared: { title: string; priceCents: number }[]): number | null {
+  const words = (t: string) =>
+    new Set(
+      t
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 3 && !STOP_WORDS.has(w))
+        .map(singular),
+    );
+  const mine = words(title);
+  const similar = compared
+    .filter((c) => c.priceCents > 0 && c.title !== title)
+    .filter((c) => [...words(c.title)].filter((w) => mine.has(w)).length >= 2)
+    .map((c) => c.priceCents)
+    .sort((a, b) => a - b);
+  if (similar.length < 3) return null;
+  const mid = Math.floor(similar.length / 2);
+  return similar.length % 2 ? similar[mid] : Math.round((similar[mid - 1] + similar[mid]) / 2);
 }
 
 function norm(s: string): string {

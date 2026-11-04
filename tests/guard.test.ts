@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decide, periodStart, singular, type Checkout, type PastPurchase, type Proposal } from "@/lib/guard";
+import { decide, periodStart, singular, typicalPrice, type Checkout, type PastPurchase, type Proposal } from "@/lib/guard";
 import type { Rules } from "@/lib/rules";
 
 const rules: Rules = {
@@ -107,6 +107,41 @@ describe("decide", () => {
     expect(singular("batteries")).toBe("battery");
     expect(singular("glass")).toBe("glass");
     expect(singular("gas")).toBe("gas");
+  });
+
+  it("asks when a price is far below similar products", () => {
+    // Seen for real: a "power lift recliner" listed at $10 when the others cost about $400.
+    const chair = "Electric Power Lift Recliner Chair for Elderly";
+    const d = decide({
+      proposal: { ...gift, title: chair, priceCents: 1000 },
+      checkout: { ...sameAtCheckout, priceCents: 1000 },
+      rules,
+      history: [],
+      now,
+      compared: [
+        { title: "Power Lift Recliner Chair for Elderly", priceCents: 55860 },
+        { title: "Garvee Power Lift Recliner Chair For Elderly", priceCents: 42299 },
+        { title: "Power Lift Recliner Chair for Elderly with Massage", priceCents: 34937 },
+        { title: "Chair cushion", priceCents: 1500 },
+      ],
+    });
+    expect(d.verdict).toBe("ask");
+    expect(d.reasons).toContain("Much cheaper than similar products (typically $422.99). It may be a listing error.");
+  });
+
+  it("doesn't compare against different kinds of product", () => {
+    // Beans are cheap next to coffee machines; that's not suspicious.
+    expect(
+      typicalPrice("Whole bean coffee, 12 oz", [
+        { title: "Single serve coffee maker", priceCents: 13482 },
+        { title: "Grind and brew coffee maker", priceCents: 25979 },
+        { title: "Espresso machine", priceCents: 32800 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("needs three similar products before judging a price", () => {
+    expect(typicalPrice("Fleece throw blanket", [{ title: "Plush fleece throw blanket", priceCents: 2499 }])).toBeNull();
   });
 
   it("blocks a link that goes somewhere other than the shop", () => {

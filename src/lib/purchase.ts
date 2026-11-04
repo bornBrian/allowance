@@ -18,6 +18,7 @@ export interface PurchaseRequest {
   maxPrice?: number | null; // a price in dollars the person named in the request
   why: string; // the agent's reason, shown to the person
   member?: { id: string; name: string } | null; // someone the payer looks after, or null for the payer
+  compared?: { title: string; priceCents: number }[]; // the other products the agent looked at
 }
 
 // The outside world, swappable in tests.
@@ -31,7 +32,7 @@ export interface Services {
 const live: Services = { recheck: channel3Recheck, charge: paypalCharge, status: () => {}, notify: notifyPayer };
 
 export async function proposePurchase(
-  { wallet, request, product, category, maxPrice, why, member }: PurchaseRequest,
+  { wallet, request, product, category, maxPrice, why, member, compared }: PurchaseRequest,
   services: Partial<Services> = {},
 ): Promise<{ purchase: Purchase; result: string }> {
   const { recheck, charge, status, notify } = { ...live, ...services };
@@ -47,6 +48,7 @@ export async function proposePurchase(
     history: paidHistory(wallet.id),
     now: new Date(),
     requestMaxCents: maxPrice ? cents(maxPrice) : null,
+    compared,
   });
 
   const id = randomUUID();

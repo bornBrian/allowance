@@ -88,8 +88,11 @@ export async function runAgent(actor: Actor, request: string, emit: (e: AgentEve
       if (!product) return "That id isn't from your search results. Search first, then use an id from the results.";
       asked = true;
 
+      const compared = [...seen.values()]
+        .filter((p) => p.id !== product.id)
+        .map((p) => ({ title: p.title, priceCents: p.priceCents }));
       const outcome = await proposePurchase(
-        { wallet: ready, request, product, category, maxPrice, why: cleanLine(why, 400), member },
+        { wallet: ready, request, product, category, maxPrice, why: cleanLine(why, 400), member, compared },
         { status: (text) => emit({ type: "status", text }) },
       );
       purchase = outcome.purchase;
