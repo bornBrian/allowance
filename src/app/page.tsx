@@ -8,6 +8,7 @@ import type { AppState } from "@/lib/state";
 import { EXAMPLE_RULES_TEXT } from "@/lib/rules";
 import { HumanCheck } from "./human-check";
 import { LinkPayPal } from "./link-paypal";
+import { NotifyToggle } from "./notify-toggle";
 import { Speak } from "./speak";
 
 export default function Home() {
@@ -20,9 +21,19 @@ export default function Home() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const post = useCallback(async (url: string, body?: unknown) => {
+  // While someone is waiting on someone else, keep the page current without a reload:
+  // the payer sees a new request arrive, the person they look after sees the answer.
+  const waiting = state?.purchases.some((p) => p.status === "waiting") ?? false;
+  const shared = (state?.role === "member" || (state?.members.length ?? 0) > 0) ?? false;
+  useEffect(() => {
+    if (!shared) return;
+    const timer = setInterval(() => loadState().then(setState, () => {}), waiting ? 5000 : 15000);
+    return () => clearInterval(timer);
+  }, [shared, waiting]);
+
+  const post = useCallback(async (url: string, body?: unknown, method = "POST") => {
     const res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -33,40 +44,70 @@ export default function Home() {
 
   return (
     <main>
-      <header className="hero">
-        <p className="wordmark">Allowance</p>
-        <h1>Give your shopping agent an allowance, not your wallet.</h1>
-        <p>
-          Set your rules in plain words. Ask for what you need. Your agent shops real stores and pays with PayPal only
-          when your rules say yes.
-        </p>
-      </header>
-
+      {state ? (
+        <Sections state={state} setState={setState} post={post} />
+      ) : (
+        <Hero title="Give your shopping agent an allowance, not your wallet." />
+      )}
       {error && <p className="error">{error}</p>}
-      {state && <Sections state={state} setState={setState} post={post} />}
     </main>
   );
 }
 
-type Post = (url: string, body?: unknown) => Promise<void>;
+type Post = (url: string, body?: unknown, method?: string) => Promise<void>;
 
-// A first visit is three steps. Once both set-up steps are done, the page leads
-// with what's left of the allowance and the request box.
+function Hero({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <header className="hero">
+      <p className="wordmark">Allowance</p>
+      <h1>{title}</h1>
+      {children && <p>{children}</p>}
+    </header>
+  );
+}
+
 function Sections({ state, setState, post }: { state: AppState; setState: (s: AppState) => void; post: Post }) {
-  const setUp = Boolean(state.rulesText) && state.paypal.linked;
   const refresh = () => loadState().then(setState, () => {});
 
-  if (setUp) {
+  // Someone the payer looks after: ask, see what's left, see their own requests.
+  if (state.role === "member") {
+    const owner = state.ownerName ?? "The person who set this up";
     return (
       <>
-        <AllowanceCard state={state} post={post} />
+        <Hero title={`Hi ${state.memberName}.`}>
+          {owner} has given you an allowance. Say what you need. If it fits, it&rsquo;s paid straight away. If not,{" "}
+          {state.ownerName ?? "they"} {state.ownerName ? "is" : "are"} asked first.
+        </Hero>
+        <MemberCard state={state} />
         <Ask state={state} refresh={refresh} post={post} />
-        <Spending purchases={state.purchases} post={post} />
+        <Spending state={state} post={post} title="Your requests" />
       </>
     );
   }
+
+  const setUp = Boolean(state.rulesText) && state.paypal.linked;
+  if (setUp) {
+    return (
+      <>
+        <Hero title="Give your shopping agent an allowance, not your wallet.">
+          Set the rules once. You, or someone you look after, ask for what&rsquo;s needed. The agent shops real stores
+          and pays with your PayPal only when your rules say yes.
+        </Hero>
+        <NeedsYourOk state={state} post={post} />
+        <AllowanceCard state={state} post={post} />
+        <People state={state} post={post} />
+        <Ask state={state} refresh={refresh} post={post} />
+        <Spending state={state} post={post} title="Spending" />
+      </>
+    );
+  }
+
   return (
     <>
+      <Hero title="Give your shopping agent an allowance, not your wallet.">
+        Set the rules once. You, or someone you look after, ask for what&rsquo;s needed. The agent shops real stores and
+        pays with your PayPal only when your rules say yes.
+      </Hero>
       {state.humanCheck.needed && <Welcome siteKey={state.humanCheck.siteKey} setState={setState} />}
       <section className="step">
         <StepTitle n={1} done={Boolean(state.rulesText)}>
@@ -86,7 +127,7 @@ function Sections({ state, setState, post }: { state: AppState; setState: (s: Ap
         </StepTitle>
         <Ask state={state} refresh={refresh} post={post} bare />
       </section>
-      <Spending purchases={state.purchases} post={post} />
+      <Spending state={state} post={post} title="Spending" />
     </>
   );
 }
@@ -110,6 +151,39 @@ function Welcome({ siteKey, setState }: { siteKey: string; setState: (s: AppStat
       <p className="lead">A quick check that you&rsquo;re a person. It keeps this demo free for everyone.</p>
       <HumanCheck siteKey={siteKey} onPassed={setState} onError={setError} />
       {error && <p className="error">{error}</p>}
+    </section>
+  );
+}
+
+// Requests from the people the payer looks after (or the payer's own) that need a yes or no.
+function NeedsYourOk({ state, post }: { state: AppState; post: Post }) {
+  const waiting = state.purchases.filter((p) => p.status === "waiting");
+  if (!waiting.length) return null;
+  return (
+    <section className="needs-ok">
+      <h2>Needs your OK</h2>
+      <ul className="plain">
+        {waiting.map((p) => {
+          const why = p.checks.find((c) => c.outcome === "ask")?.detail;
+          return (
+            <li key={p.id} className="ok-item">
+              <div className="product">
+                <Thumb src={p.image} />
+                <div style={{ minWidth: 0 }}>
+                  <div>
+                    <b>{p.memberName ?? "You"}</b> asked for {p.title}
+                  </div>
+                  <div className="small muted">
+                    {dollars(p.amountCents)} at {p.shop}
+                    {why ? ` · ${why}` : ""}
+                  </div>
+                </div>
+              </div>
+              <Actions purchase={p} post={post} role="payer" />
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -160,6 +234,25 @@ function AllowanceCard({ state, post }: { state: AppState; post: Post }) {
   );
 }
 
+// The same card for someone the payer looks after: read-only, their own spending.
+function MemberCard({ state }: { state: AppState }) {
+  return (
+    <section className="card">
+      <div className="card-top">
+        <div>
+          <p className="small muted">You&rsquo;ve spent this month</p>
+          <p className="big-number">{dollars(state.spentThisMonthCents)}</p>
+        </div>
+        <Budgets state={state} />
+      </div>
+      <div className="card-row">
+        <div className="card-label">Rules</div>
+        <p className="card-text">{state.rulesSummary.join(" ") || "No rules set yet."}</p>
+      </div>
+    </section>
+  );
+}
+
 function Budgets({ state }: { state: AppState }) {
   if (!state.remaining.length) return null;
   return (
@@ -182,6 +275,124 @@ function Budgets({ state }: { state: AppState }) {
         );
       })}
     </ul>
+  );
+}
+
+// The people the payer looks after: invite, see who joined, and get their requests on this phone.
+function People({ state, post }: { state: AppState; post: Post }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section>
+      <h2>People you look after</h2>
+      <p className="lead">
+        Give someone this allowance on their own phone: a teenager, or a parent who needs a hand with shopping. They ask
+        in their own words. Anything outside your rules comes to you first.
+      </p>
+      {state.members.length > 0 && (
+        <ul className="plain people">
+          {state.members.map((m) => (
+            <li key={m.id}>
+              <span>{m.name}</span>
+              <button
+                className="link"
+                onClick={() => post(`/api/members/${m.id}`, undefined, "DELETE").catch((e) => setError(e.message))}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p className="error">{error}</p>}
+      <InviteForm ownerName={state.ownerName} />
+      <NotifyToggle pushKey={state.pushKey} />
+    </section>
+  );
+}
+
+function InviteForm({ ownerName }: { ownerName: string | null }) {
+  const [name, setName] = useState("");
+  const [me, setMe] = useState(ownerName ?? "");
+  const [link, setLink] = useState<{ url: string; name: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, ownerName: me }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't create the invite.");
+      setLink({ url: data.url, name: data.name });
+      setName("");
+      setCopied(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (link) {
+    const message = `${me} has given you a shopping allowance. Open this on your phone to start: ${link.url}`;
+    return (
+      <div className="invite">
+        <p style={{ margin: "0 0 8px" }}>
+          Send this link to <b>{link.name}</b>. It works once, for 7 days.
+        </p>
+        <input type="text" readOnly value={link.url} aria-label="Invite link" onFocus={(e) => e.target.select()} />
+        <div className="row">
+          <button
+            onClick={() =>
+              navigator.clipboard.writeText(link.url).then(
+                () => setCopied(true),
+                () => setError("Couldn't copy. Select the link and copy it instead."),
+              )
+            }
+          >
+            {copied ? "Copied" : "Copy link"}
+          </button>
+          {typeof navigator !== "undefined" && "share" in navigator && (
+            <button className="secondary" onClick={() => navigator.share({ text: message }).catch(() => {})}>
+              Share
+            </button>
+          )}
+          <button className="link" onClick={() => setLink(null)}>
+            Invite someone else
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="invite"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (name.trim()) create();
+      }}
+    >
+      <div className="fields">
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name, e.g. Mum" aria-label="Their name" />
+        {!ownerName && (
+          <input type="text" value={me} onChange={(e) => setMe(e.target.value)} placeholder="Your name, as they know you" aria-label="Your name" />
+        )}
+      </div>
+      <div className="row">
+        <button type="submit" disabled={busy || !name.trim() || !me.trim()}>
+          {busy ? "Creating…" : "Create invite link"}
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </form>
   );
 }
 
@@ -293,6 +504,8 @@ const SUGGESTIONS = [
   "A refill pack of printer paper",
 ];
 
+const MEMBER_SUGGESTIONS = ["Bread and milk for the week", "A warm scarf, under $25", "Batteries for the TV remote"];
+
 function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refresh: () => void; bare?: boolean }) {
   const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
@@ -301,9 +514,11 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const ready = Boolean(state.rulesText) && state.paypal.linked;
+  const member = state.role === "member";
+  const ready = state.rulesSummary.length > 0 && state.paypal.linked;
   const purchase = state.purchases.find((p) => p.id === purchaseId) ?? null;
   const finished = !busy && (purchase !== null || reply !== null);
+  const suggestions = member ? MEMBER_SUGGESTIONS : SUGGESTIONS;
 
   function clear() {
     setSteps([]);
@@ -355,7 +570,13 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
 
   const body = (
     <>
-      {!ready && <p className="lead">Available once your rules are saved and PayPal is linked.</p>}
+      {!ready && (
+        <p className="lead">
+          {member
+            ? `Available once ${state.ownerName ?? "they"} has finished setting up.`
+            : "Available once your rules are saved and PayPal is linked."}
+        </p>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -366,7 +587,7 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
           type="text"
           value={request}
           onChange={(e) => setRequest(e.target.value)}
-          placeholder="What do you need?"
+          placeholder={member ? "What do you need? Type it or press Speak" : "What do you need?"}
           disabled={!ready || busy}
           aria-label="What should the agent buy?"
         />
@@ -382,7 +603,7 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
         <div className="suggestions">
           <p className="small muted">Try one of these</p>
           <ul className="plain">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <li key={s}>
                 <button className="link" onClick={() => setRequest(s)}>
                   {s}
@@ -424,7 +645,7 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
               Searched {searches === 1 ? "once" : `${searches} times`} · compared {options.length} products
             </p>
           )}
-          {purchase ? <Result purchase={purchase} reply={reply} post={post} /> : <p className="reply">{reply}</p>}
+          {purchase ? <Result purchase={purchase} reply={reply} post={post} state={state} /> : <p className="reply">{reply}</p>}
           <div className="row" style={{ marginTop: 16 }}>
             <button className="link" onClick={clear}>
               Done
@@ -438,26 +659,36 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
   if (bare) return body;
   return (
     <section>
-      <h2>Ask</h2>
+      <h2>{member ? "What do you need?" : "Ask"}</h2>
       {body}
     </section>
   );
 }
 
-const HEADLINE: Record<Purchase["status"], (p: Purchase) => string> = {
-  paying: () => "Paying…",
-  paid: (p) => `Paid ${dollars(p.amountCents)} with PayPal`,
-  waiting: (p) => `Needs your OK: ${dollars(p.amountCents)}`,
-  declined: () => "You declined this",
-  blocked: () => "Refused. Nothing was paid",
-  refunded: (p) => `Refunded ${dollars(p.amountCents)}`,
-  failed: () => "PayPal didn't take the payment",
-};
+function headline(p: Purchase, state: AppState): string {
+  const owner = state.ownerName ?? "the payer";
+  switch (p.status) {
+    case "paying":
+      return "Paying…";
+    case "paid":
+      return `Paid ${dollars(p.amountCents)} with PayPal`;
+    case "waiting":
+      return state.role === "member" ? `Waiting for ${owner}'s OK: ${dollars(p.amountCents)}` : `Needs your OK: ${dollars(p.amountCents)}`;
+    case "declined":
+      return state.role === "member" ? "Not approved" : "You declined this";
+    case "blocked":
+      return "Refused. Nothing was paid";
+    case "refunded":
+      return `Refunded ${dollars(p.amountCents)}`;
+    case "failed":
+      return "PayPal didn't take the payment";
+  }
+}
 
-function Result({ purchase, reply, post }: { purchase: Purchase; reply: string | null; post: Post }) {
+function Result({ purchase, reply, post, state }: { purchase: Purchase; reply: string | null; post: Post; state: AppState }) {
   return (
     <>
-      <h3 className={purchase.status}>{HEADLINE[purchase.status](purchase)}</h3>
+      <h3 className={purchase.status}>{headline(purchase, state)}</h3>
       <div className="product">
         <Thumb src={purchase.image} large />
         <div>
@@ -471,7 +702,7 @@ function Result({ purchase, reply, post }: { purchase: Purchase; reply: string |
       </div>
       {reply && <p className="reply">{reply}</p>}
       <Checks purchase={purchase} />
-      <Actions purchase={purchase} post={post} />
+      <Actions purchase={purchase} post={post} role={state.role} />
     </>
   );
 }
@@ -489,7 +720,7 @@ function Checks({ purchase }: { purchase: Purchase }) {
   );
 }
 
-function Actions({ purchase, post }: { purchase: Purchase; post: Post }) {
+function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; role: AppState["role"] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = async (action: string) => {
@@ -504,10 +735,22 @@ function Actions({ purchase, post }: { purchase: Purchase; post: Post }) {
     }
   };
 
+  if (purchase.status === "waiting" && role === "member") {
+    return (
+      <>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button className="secondary" onClick={() => act("decline")} disabled={busy}>
+            Cancel request
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+      </>
+    );
+  }
   if (purchase.status === "waiting") {
     return (
       <>
-        <div className="row" style={{ marginTop: 16 }}>
+        <div className="row" style={{ marginTop: 12 }}>
           <button onClick={() => act("approve")} disabled={busy}>
             Approve and pay {dollars(purchase.amountCents)}
           </button>
@@ -519,10 +762,10 @@ function Actions({ purchase, post }: { purchase: Purchase; post: Post }) {
       </>
     );
   }
-  if (purchase.status === "paid" && purchase.paypalCaptureId) {
+  if (purchase.status === "paid" && purchase.paypalCaptureId && role === "payer") {
     return (
       <>
-        <div className="row" style={{ marginTop: 16 }}>
+        <div className="row" style={{ marginTop: 12 }}>
           <button className="secondary" onClick={() => act("refund")} disabled={busy}>
             Refund
           </button>
@@ -534,25 +777,34 @@ function Actions({ purchase, post }: { purchase: Purchase; post: Post }) {
   return null;
 }
 
-const STATUS: Record<Purchase["status"], string> = {
-  paying: "Paying",
-  paid: "Paid",
-  waiting: "Needs your OK",
-  declined: "Declined",
-  blocked: "Refused",
-  refunded: "Refunded",
-  failed: "Failed",
-};
+function statusLabel(p: Purchase, state: AppState): string {
+  if (p.status === "waiting") return state.role === "member" ? `Waiting for ${state.ownerName ?? "OK"}` : "Needs your OK";
+  return { paying: "Paying", paid: "Paid", declined: "Declined", blocked: "Refused", refunded: "Refunded", failed: "Failed" }[
+    p.status
+  ];
+}
 
-function Spending({ purchases, post }: { purchases: Purchase[]; post: Post }) {
+function Spending({ state, post, title }: { state: AppState; post: Post; title: string }) {
+  const { purchases } = state;
   const [open, setOpen] = useState<string | null>(null);
   const [all, setAll] = useState(false);
+
+  // A notification tapped on a phone opens the page at that purchase.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("purchase");
+    if (id) setOpen(id);
+  }, []);
+
   if (!purchases.length) return null;
   const shown = all ? purchases : purchases.slice(0, 5);
   return (
     <section>
-      <h2>Spending</h2>
-      <p className="lead">Everything the agent tried to buy, and what your rules decided. Open one to see why.</p>
+      <h2>{title}</h2>
+      <p className="lead">
+        {state.role === "member"
+          ? "Everything you asked for, and what happened. Open one to see why."
+          : "Everything the agent tried to buy, and what your rules decided. Open one to see why."}
+      </p>
       <ul className="plain ledger">
         {shown.map((p) => (
           <li key={p.id}>
@@ -563,20 +815,22 @@ function Spending({ purchases, post }: { purchases: Purchase[]; post: Post }) {
                   {p.title}
                 </span>
                 <span className="small muted">
-                  {p.shop} · {p.category} · {when(p.createdAt)}
+                  {state.role === "payer" && p.memberName ? `${p.memberName} · ` : ""}
+                  {p.shop} · {when(p.createdAt)}
                 </span>
               </span>
               <span className="amount">
                 {dollars(p.amountCents)}
                 <span className={`small ${p.status}`} style={{ display: "block" }}>
-                  {STATUS[p.status]}
+                  {statusLabel(p, state)}
                 </span>
               </span>
             </button>
             {open === p.id && (
               <div className="detail">
                 <p className="small" style={{ margin: 0 }}>
-                  <span className="muted">You asked:</span> {p.request}
+                  <span className="muted">{p.memberName && state.role === "payer" ? `${p.memberName} asked:` : "You asked:"}</span>{" "}
+                  {p.request}
                 </p>
                 {p.why && (
                   <p className="small" style={{ margin: "4px 0 0" }}>
@@ -585,7 +839,7 @@ function Spending({ purchases, post }: { purchases: Purchase[]; post: Post }) {
                 )}
                 <Checks purchase={p} />
                 {p.paypalOrderId && <p className="small muted">PayPal order {p.paypalOrderId}</p>}
-                <Actions purchase={p} post={post} />
+                <Actions purchase={p} post={post} role={state.role} />
               </div>
             )}
           </li>

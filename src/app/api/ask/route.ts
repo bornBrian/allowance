@@ -4,7 +4,7 @@ import { UserError } from "@/lib/errors";
 import { clientIp, failure, readJson } from "@/lib/http";
 import { limit } from "@/lib/limits";
 import { cleanLine } from "@/lib/sanitize";
-import { currentWallet } from "@/lib/session";
+import { currentActor, type Actor } from "@/lib/session";
 
 export const maxDuration = 120;
 const MAX_REQUEST_LENGTH = 500;
@@ -17,11 +17,11 @@ const running = new Set<string>();
 export async function POST(req: Request) {
   let walletId: string;
   let request: string;
-  let wallet;
+  let actor: Actor;
   try {
-    wallet = await currentWallet();
-    walletId = wallet.id;
-    requireHuman(wallet);
+    actor = await currentActor();
+    walletId = actor.wallet.id;
+    requireHuman(actor.wallet);
     request = cleanLine((await readJson(req)).request);
     if (!request) throw new UserError("Say what you'd like the agent to buy.");
     if (request.length > MAX_REQUEST_LENGTH) throw new UserError(`Please keep it under ${MAX_REQUEST_LENGTH} characters.`);
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const emit = (e: AgentEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        await runAgent(wallet, request, emit);
+        await runAgent(actor, request, emit);
       } catch (err) {
         if (!(err instanceof UserError)) console.error(err);
         emit({ type: "error", text: err instanceof UserError ? err.message : "Something went wrong. Please try again." });

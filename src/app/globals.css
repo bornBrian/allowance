@@ -191,6 +191,61 @@ section > .lead,
   min-width: 0;
 }
 
+/* Requests waiting for the payer: the first thing they see. */
+.needs-ok {
+  margin-top: 40px;
+  border: 1px solid var(--ask);
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+
+.needs-ok h2 {
+  color: var(--ask);
+}
+
+.ok-item {
+  padding-top: 16px;
+}
+
+.ok-item + .ok-item {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.people li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.people li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.invite {
+  margin-top: 20px;
+}
+
+.invite .fields {
+  display: grid;
+  gap: 10px;
+}
+
+.notify {
+  margin-top: 24px;
+}
+
+.notify p {
+  margin: 0 0 8px;
+}
+
+button.big {
+  font-size: 18px;
+  padding: 14px 28px;
+}
+
 .suggestions {
   margin-top: 20px;
 }

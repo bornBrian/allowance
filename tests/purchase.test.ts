@@ -58,7 +58,8 @@ function fakes(checkout: Partial<Checkout> = {}) {
     inStock: true,
     ...checkout,
   }));
-  return { charge, recheck };
+  const notify = vi.fn<Services["notify"]>(async () => {});
+  return { charge, recheck, notify };
 }
 
 const ask = (p: Product, category = "gifts") => ({ request: "a gift for my mum", product: p, category, why: "Well rated." });
@@ -159,6 +160,36 @@ describe("proposePurchase", () => {
     expect(first.purchase.status).toBe("paid");
     expect(second.purchase.status).toBe("waiting"); // $40 + $40 is over the $60 a week
     expect(services.charge).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks the payer by notification when someone they look after needs an OK", async () => {
+    const services = fakes({ priceCents: 5499 });
+    const w = { ...wallet(), ownerName: "Brian" };
+    const { purchase, result } = await proposePurchase(
+      { wallet: w, ...ask(product({ priceCents: 5499 })), member: { id: "m1", name: "Mum" } },
+      services,
+    );
+    expect(purchase.status).toBe("waiting");
+    expect(services.notify).toHaveBeenCalledTimes(1);
+    expect(services.notify.mock.calls[0][1]).toMatchObject({ purchaseId: purchase.id, title: "Mum wants $54.99 at target.com" });
+    expect(result).toMatch(/Brian has been asked/);
+    expect(services.charge).not.toHaveBeenCalled();
+  });
+
+  it("doesn't notify when the payer asked for it themselves", async () => {
+    const services = fakes({ priceCents: 5499 });
+    await proposePurchase({ wallet: wallet(), ...ask(product({ priceCents: 5499 })) }, services);
+    expect(services.notify).not.toHaveBeenCalled();
+  });
+
+  it("doesn't notify when the purchase was paid within the rules", async () => {
+    const services = fakes();
+    const { purchase } = await proposePurchase(
+      { wallet: wallet(), ...ask(product()), member: { id: "m1", name: "Mum" } },
+      services,
+    );
+    expect(purchase.status).toBe("paid");
+    expect(services.notify).not.toHaveBeenCalled();
   });
 
   it("records a failed payment without claiming it was paid", async () => {

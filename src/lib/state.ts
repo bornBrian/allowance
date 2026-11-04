@@ -1,9 +1,11 @@
 import "server-only";
-import { listPurchases, paidHistory, type Purchase, type Wallet } from "./db";
+import { captchaSiteKey } from "./captcha";
+import { listMembers, listPurchases, paidHistory, type Purchase } from "./db";
 import { describeRules } from "./describe";
 import { cents, periodStart, spentSince } from "./guard";
-import { captchaSiteKey } from "./captcha";
+import { vapidPublicKey } from "./notify";
 import { paypalClientId } from "./paypal";
+import type { Actor } from "./session";
 
 export interface Remaining {
   label: string;
@@ -13,17 +15,24 @@ export interface Remaining {
 }
 
 export interface AppState {
-  rulesText: string | null;
+  role: "payer" | "member";
+  ownerName: string | null; // the payer's name, as the people they look after see it
+  memberName: string | null; // set when a person the payer looks after is using the page
+  rulesText: string | null; // the payer's own words; only the payer sees them
   rulesSummary: string[];
   remaining: Remaining[];
   paypal: { linked: boolean; email: string | null; clientId: string | null };
   humanCheck: { siteKey: string; needed: true } | { siteKey: null; needed: false };
-  spentThisMonthCents: number; // everything the agent has paid this calendar month (UTC)
+  spentThisMonthCents: number; // everything paid this calendar month (UTC), for this person
   purchases: Purchase[];
+  members: { id: string; name: string }[]; // people the payer looks after (payer only)
+  pushKey: string | null; // for turning on approval notifications (payer only)
 }
 
-// Everything the page shows, in one object.
-export function appState(wallet: Wallet): AppState {
+// Everything the page shows, in one object, shaped for who is looking.
+export function appState(actor: Actor): AppState {
+  const { wallet } = actor;
+  const member = actor.role === "member" ? actor.member : null;
   const history = paidHistory(wallet.id);
   const now = new Date();
   const remaining: Remaining[] = [];
@@ -52,18 +61,33 @@ export function appState(wallet: Wallet): AppState {
     }
   }
 
+  const purchases = listPurchases(wallet.id, member?.id);
+  const monthStart = periodStart("month", now);
+  const spentThisMonthCents = purchases
+    .filter((p) => p.status === "paid" && new Date(p.createdAt) >= monthStart)
+    .reduce((sum, p) => sum + p.amountCents, 0);
+
   return {
-    rulesText: wallet.rulesText,
+    role: actor.role,
+    ownerName: wallet.ownerName,
+    memberName: member?.name ?? null,
+    rulesText: member ? null : wallet.rulesText,
     rulesSummary: rules ? describeRules(rules).split("\n") : [],
     remaining,
-    paypal: { linked: Boolean(wallet.paypalTokenId), email: wallet.paypalEmail, clientId: paypalClientId() },
-    humanCheck: humanCheck(wallet),
-    spentThisMonthCents: spentSince(history, periodStart("month", now), () => true),
-    purchases: listPurchases(wallet.id),
+    paypal: {
+      linked: Boolean(wallet.paypalTokenId),
+      email: member ? null : wallet.paypalEmail,
+      clientId: member ? null : paypalClientId(),
+    },
+    humanCheck: humanCheck(actor),
+    spentThisMonthCents,
+    purchases,
+    members: member ? [] : listMembers(wallet.id).map((m) => ({ id: m.id, name: m.name })),
+    pushKey: member ? null : vapidPublicKey(),
   };
 }
 
-function humanCheck(wallet: Wallet): AppState["humanCheck"] {
+function humanCheck({ wallet }: Actor): AppState["humanCheck"] {
   const siteKey = captchaSiteKey();
   return siteKey && !wallet.verified ? { siteKey, needed: true } : { siteKey: null, needed: false };
 }

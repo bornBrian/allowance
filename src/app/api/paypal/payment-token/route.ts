@@ -3,14 +3,14 @@ import { UserError } from "@/lib/errors";
 import { clientIp, failure, readJson } from "@/lib/http";
 import { limit } from "@/lib/limits";
 import { createPaymentToken } from "@/lib/paypal";
-import { currentWallet } from "@/lib/session";
+import { currentActor, currentPayer } from "@/lib/session";
 import { appState } from "@/lib/state";
 
 // Step 2 of linking PayPal: the person approved, so swap the setup token for a
 // saved payment token. Only the setup token this browser started is accepted.
 export async function POST(req: Request) {
   try {
-    const wallet = await currentWallet();
+    const wallet = await currentPayer();
     limit("paypal", { wallet: wallet.id, ip: await clientIp() });
     const { vaultSetupToken } = await readJson(req);
     if (typeof vaultSetupToken !== "string" || !vaultSetupToken || vaultSetupToken !== wallet.paypalSetupToken) {
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     }
     const token = await createPaymentToken(vaultSetupToken);
     savePaypal(wallet.id, token.paymentTokenId, token.email);
-    return Response.json(appState(await currentWallet()));
+    return Response.json(appState(await currentActor()));
   } catch (err) {
     return failure(err, "Couldn't finish linking PayPal.");
   }
