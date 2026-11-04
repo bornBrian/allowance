@@ -6,7 +6,7 @@ export default defineConfig({
   root: import.meta.dirname,
   resolve: {
     alias: {
-      "@": import.meta.dirname,
+      "@": path.join(import.meta.dirname, "src"),
       "server-only": path.join(import.meta.dirname, "tests/stubs/server-only.ts"),
     },
   },
