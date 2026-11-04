@@ -3,7 +3,7 @@
 Give your shopping agent an allowance, not your wallet.
 
 <p>
-  <img src="docs/images/payer.png" width="62%" alt="The payer's view: a request from Mum waiting for approval, and what's been spent this month">
+  <img src="docs/images/payer.png" width="62%" alt="The payer's view on a computer: a request from Mum waiting for approval, and the agent's receipt for a purchase it paid with PayPal">
   &nbsp;
   <img src="docs/images/mum.png" width="30%" alt="Mum's view on her phone: what she can spend, and one big Speak button">
 </p>
