@@ -85,7 +85,7 @@ export async function searchProducts(query: string, maxPrice: number | null, lim
 }
 
 // The guard's second look: fetch the product page again just before paying.
-export async function recheck(product: Product): Promise<Checkout> {
+export async function recheck(product: Pick<Product, "url" | "shop">): Promise<Checkout> {
   try {
     countChannel3Call();
     const { product: fresh } = await channel3().products.lookup({ url: product.url });
