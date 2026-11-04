@@ -115,7 +115,9 @@ export async function runAgent(actor: Actor, request: string, emit: (e: AgentEve
       "Search with search_products (two or three searches at most), compare price, rating and fit, then call buy " +
       "once with the best match. Prefer products within their limits. If nothing suitable is found, say so and " +
       "don't buy. After the guard answers, reply to the person in one short sentence, under 25 words: what you " +
-      "chose and why. The app already shows the price, the shop and what happened to the payment. No lists.",
+      "chose and why. The app already shows the price, the shop and what happened to the payment. No lists.\n\n" +
+      "Your last message is shown to the person exactly as you write it. Speak to them as \"you\", and write " +
+      "nothing else in it: no notes to yourself, no description of what you're about to do.",
     tools: [searchTool, buyTool],
     messages: [
       {
