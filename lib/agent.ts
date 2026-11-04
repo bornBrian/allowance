@@ -1,14 +1,14 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { recheck, searchProducts, type Product } from "./channel3";
+import { searchProducts, type Product } from "./channel3";
 import { anthropic, checkDailyLimit, classifyRequest, FALLBACK_BETA, MODEL, recordUsage } from "./claude";
-import { addPurchase, getPurchase, paidHistory, setStatus, type Purchase, type Wallet } from "./db";
-import { decide, money } from "./guard";
-import { charge } from "./paypal";
+import type { Purchase, Wallet } from "./db";
 import { describeRules } from "./describe";
 import { UserError } from "./errors";
+import { money } from "./guard";
+import { proposePurchase } from "./purchase";
+import { cleanLine } from "./sanitize";
 
 export type AgentEvent =
   | { type: "status"; text: string }
@@ -26,7 +26,7 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
   if (!wallet.rules) throw new UserError("Set your rules first.");
   if (!wallet.paypalTokenId) throw new UserError("Link PayPal first.");
   const rules = wallet.rules;
-  const paymentTokenId = wallet.paypalTokenId;
+  const ready = { ...wallet, rules, paypalTokenId: wallet.paypalTokenId };
 
   emit({ type: "status", text: "Reading your request" });
   const { category, search, maxPrice } = await classifyRequest(request, rules);
@@ -35,6 +35,8 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
   // can't make up a price, a shop or a link.
   const seen = new Map<string, Product>();
   let purchase: Purchase | null = null;
+  // Set before any await: Claude can call tools in parallel, and only the first buy counts.
+  let asked = false;
 
   const searchTool = betaZodTool({
     name: "search_products",
@@ -77,69 +79,18 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
       why: z.string().describe("One or two plain sentences, for the person, on why you chose this product"),
     }),
     run: async ({ product_id, why }) => {
-      if (purchase) return "You've already made a purchase request for this task.";
+      if (asked) return "You've already made a purchase request for this task.";
       const product = seen.get(product_id);
       if (!product) return "That id isn't from your search results. Search first, then use an id from the results.";
+      asked = true;
 
-      emit({ type: "status", text: `Checking ${product.shop} for the current price` });
-      const checkout = await recheck(product);
-
-      emit({ type: "status", text: "Checking your rules" });
-      const decision = decide({
-        proposal: { ...product, productId: product.id, category },
-        checkout,
-        rules,
-        history: paidHistory(wallet.id),
-        now: new Date(),
-      });
-
-      const id = randomUUID();
-      addPurchase({
-        id,
-        walletId: wallet.id,
-        request,
-        productId: product.id,
-        title: product.title,
-        image: product.image,
-        shop: product.shop,
-        url: product.url,
-        category,
-        amountCents: decision.amountCents,
-        status: decision.verdict === "pay" ? "paying" : decision.verdict === "ask" ? "waiting" : "blocked",
-        why,
-        checks: decision.checks,
-      });
-
-      let result: string;
-      if (decision.verdict === "pay") {
-        emit({ type: "status", text: "Paying with PayPal" });
-        try {
-          const paid = await charge({
-            paymentTokenId,
-            purchaseId: id,
-            amountCents: decision.amountCents,
-            title: product.title,
-            shop: product.shop,
-            url: product.url,
-          });
-          setStatus(id, paid.paid ? "paid" : "failed", { orderId: paid.orderId, captureId: paid.captureId });
-          result = paid.paid
-            ? `Paid ${money(decision.amountCents)} with PayPal. Every rule passed.`
-            : `PayPal didn't complete the payment (status ${paid.status}). Nothing was charged.`;
-        } catch (err) {
-          console.error("PayPal charge failed", err);
-          setStatus(id, "failed");
-          result = "PayPal declined the payment. Nothing was charged.";
-        }
-      } else if (decision.verdict === "ask") {
-        result = `Not paid yet. The person has been asked to approve it, because: ${decision.reasons.join(" ")}`;
-      } else {
-        result = `Blocked. Nothing was paid, because: ${decision.reasons.join(" ")}`;
-      }
-
-      purchase = getPurchase(wallet.id, id);
-      if (purchase) emit({ type: "purchase", purchase });
-      return result;
+      const outcome = await proposePurchase(
+        { wallet: ready, request, product, category, why: cleanLine(why, 400) },
+        { status: (text) => emit({ type: "status", text }) },
+      );
+      purchase = outcome.purchase;
+      emit({ type: "purchase", purchase });
+      return outcome.result;
     },
   });
 
