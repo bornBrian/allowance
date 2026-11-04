@@ -306,6 +306,20 @@ span.thumb {
   white-space: nowrap;
 }
 
+/* Long emails and product names wrap anywhere rather than breaking the layout. */
+.row span {
+  overflow-wrap: anywhere;
+}
+
+.email {
+  display: block;
+}
+
+.amount-inline {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 .amount {
   text-align: right;
   font-variant-numeric: tabular-nums;

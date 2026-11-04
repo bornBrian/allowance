@@ -18,6 +18,7 @@ export interface AppState {
   remaining: Remaining[];
   paypal: { linked: boolean; email: string | null; clientId: string | null };
   humanCheck: { siteKey: string; needed: true } | { siteKey: null; needed: false };
+  spentThisMonthCents: number; // everything the agent has paid this calendar month (UTC)
   purchases: Purchase[];
 }
 
@@ -57,6 +58,7 @@ export function appState(wallet: Wallet): AppState {
     remaining,
     paypal: { linked: Boolean(wallet.paypalTokenId), email: wallet.paypalEmail, clientId: paypalClientId() },
     humanCheck: humanCheck(wallet),
+    spentThisMonthCents: spentSince(history, periodStart("month", now), () => true),
     purchases: listPurchases(wallet.id),
   };
 }
