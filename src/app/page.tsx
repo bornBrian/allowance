@@ -277,7 +277,7 @@ function PayerHome({
           </div>
           <div className="ok-row">
             {waiting.map((p) => (
-              <OkCard key={p.id} purchase={p} post={post} />
+              <OkCard key={p.id} purchase={p} post={post} open={() => open(p.id)} />
             ))}
           </div>
         </>
@@ -360,19 +360,22 @@ function AskBox({
 }
 
 // A request waiting for the payer, as a product card.
-function OkCard({ purchase: p, post }: { purchase: Purchase; post: Post }) {
+// Tapping the photo or the name opens the request in full: why it was asked, and every check.
+function OkCard({ purchase: p, post, open }: { purchase: Purchase; post: Post; open: () => void }) {
   const why = p.checks.find((c) => c.outcome === "ask")?.detail;
   return (
     <article className="ok">
-      <div className="photo">
+      <button className="photo" onClick={open} aria-label={`Details of ${p.title}`}>
         {p.image && <Photo src={p.image} size={128} />}
-      </div>
+      </button>
       <div className="body">
         <p className="who">
           <Icon name="clock" />
           {p.memberName ?? "You"} asked
         </p>
-        <p className="name">{p.title}</p>
+        <button className="name" onClick={open}>
+          {p.title}
+        </button>
         <div className="line">
           <span className="meta">{p.shop}</span>
           <span className="price">{dollars(p.amountCents)}</span>

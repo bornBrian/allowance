@@ -610,6 +610,11 @@ textarea:focus {
 }
 
 .ok .photo {
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  cursor: pointer;
   height: 150px;
   background: #fff;
   border-bottom: 1px solid var(--line);
@@ -645,6 +650,13 @@ textarea:focus {
 }
 
 .ok .name {
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
   margin-top: 6px;
   font-weight: 600;
   line-height: 1.35;
