@@ -59,7 +59,7 @@ export default function Home() {
 
   // While someone is waiting on someone else, keep the page current without a reload:
   // the payer sees a new request arrive, the person they look after sees the answer.
-  const waiting = state?.purchases.some((p) => p.status === "waiting") ?? false;
+  const waiting = state?.purchases.some((p) => p.status === "waiting" || p.status === "paying") ?? false;
   const shared = (state?.role === "member" || (state?.members.length ?? 0) > 0) ?? false;
   useEffect(() => {
     if (!shared) return;
