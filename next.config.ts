@@ -15,6 +15,15 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Channel3's product photos are full size (often close to 1 MB). The server
+  // shrinks each one to the size it's shown at, once, and caches it. Only
+  // Channel3's image host is allowed, so this can't fetch anything else.
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "cdn.trychannel3.com" }],
+    imageSizes: [96, 128, 192, 256],
+    formats: ["image/webp"],
+    minimumCacheTTL: 86400,
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
