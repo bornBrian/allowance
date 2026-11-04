@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decide, periodStart, type Checkout, type PastPurchase, type Proposal } from "@/lib/guard";
+import { decide, periodStart, singular, type Checkout, type PastPurchase, type Proposal } from "@/lib/guard";
 import type { Rules } from "@/lib/rules";
 
 const rules: Rules = {
@@ -88,6 +88,25 @@ describe("decide", () => {
     const d = run({ title: "Seed of the Month subscription box" });
     expect(d.verdict).toBe("block");
     expect(d.reasons).toContain("Your rules say never buy subscriptions.");
+  });
+
+  it("blocks a never-buy item named in the plural", () => {
+    const d = decide({
+      proposal: { ...gift, title: "Lavender Scented Candle, 8 oz" },
+      checkout: sameAtCheckout,
+      rules: { ...rules, neverBuy: ["candles"] },
+      history: [],
+      now,
+    });
+    expect(d.verdict).toBe("block");
+    expect(d.reasons).toContain("Your rules say never buy candles.");
+  });
+
+  it("turns shopping words into their singular", () => {
+    expect(singular("candles")).toBe("candle");
+    expect(singular("batteries")).toBe("battery");
+    expect(singular("glass")).toBe("glass");
+    expect(singular("gas")).toBe("gas");
   });
 
   it("blocks a link that goes somewhere other than the shop", () => {

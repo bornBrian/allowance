@@ -99,7 +99,10 @@ export function decide({ proposal, checkout, rules, history, now, requestMaxCent
   const banned = rules.neverBuy.map(norm).find((word) => {
     if (word === category) return true;
     if (word.startsWith("subscription")) return SUBSCRIPTION_WORDS.test(proposal.title);
-    return word.length > 2 && norm(proposal.title).includes(word);
+    if (word.length <= 2) return false;
+    // "candles" in the rules must still catch "Scented Candle" in a title.
+    const title = norm(proposal.title);
+    return title.includes(word) || title.includes(singular(word));
   });
   if (banned) {
     add("Never buy", "block", `Your rules say never buy ${banned}.`);
@@ -225,6 +228,14 @@ export function normShop(shop: string): string {
 
 function norm(s: string): string {
   return s.trim().toLowerCase();
+}
+
+// A plain English singular, enough for shopping words: candles -> candle, batteries -> battery.
+// Words ending in "ss" (glass) are left alone.
+export function singular(word: string): string {
+  if (word.length > 4 && word.endsWith("ies")) return word.slice(0, -3) + "y";
+  if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss")) return word.slice(0, -1);
+  return word;
 }
 
 function hostOf(url: string): string | null {
