@@ -9,7 +9,7 @@
 // Set BROWSER to the browser's path if it isn't found automatically.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -47,11 +47,11 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 const port = 9400 + Math.floor(Math.random() * 400);
-const browser = spawn(
-  browserPath,
-  ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(path.join(tmpdir(), "docs-"))}`, "about:blank"],
-  { stdio: "ignore" },
-);
+// A throwaway browser profile, removed at the end: each one is tens of megabytes.
+const profile = mkdtempSync(path.join(tmpdir(), "docs-"));
+const browser = spawn(browserPath, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "about:blank"], {
+  stdio: "ignore",
+});
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let target;
@@ -119,3 +119,5 @@ for (const name of docs) {
 ws.close();
 browser.kill();
 server.close();
+await wait(500);
+rmSync(profile, { recursive: true, force: true });
