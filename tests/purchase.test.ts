@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { OrderStatus } from "@paypal/paypal-server-sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { Product } from "@/lib/channel3";
 import { getWallet } from "@/lib/db";
@@ -48,7 +49,7 @@ function fakes(checkout: Partial<Checkout> = {}) {
   const charge = vi.fn<Services["charge"]>(async () => ({
     orderId: "ORDER-1",
     captureId: "CAPTURE-1",
-    status: "COMPLETED",
+    status: OrderStatus.Completed,
     paid: true,
   }));
   const recheck = vi.fn<Services["recheck"]>(async () => ({
