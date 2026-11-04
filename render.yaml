@@ -1,0 +1,42 @@
+# Render Blueprint for the hosted demonstration. See docs (ALW-SAD section 9).
+# Keys are not stored here: Render asks for each "sync: false" value when the
+# Blueprint is first applied, and keeps them as secret environment variables.
+services:
+  - type: web
+    name: allowance
+    runtime: node
+    plan: starter # a persistent disk needs a paid instance
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass # deploy main only after GitHub Actions pass
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATABASE_PATH
+        value: /var/data/allowance.db
+      - key: DAILY_AI_BUDGET_USD
+        value: "0.25"
+      - key: AI_TOTAL_BUDGET_USD
+        value: "1"
+      - key: CHANNEL3_MONTHLY_LIMIT
+        value: "900"
+      - key: APP_URL
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false

@@ -62,7 +62,7 @@ function Sections({ state, setState, post }: { state: AppState; setState: (s: Ap
       {state.humanCheck.needed && <Welcome siteKey={state.humanCheck.siteKey} setState={setState} />}
       {!setUp && settings}
       <Ask state={state} refresh={refresh} post={post} />
-      <Spending purchases={state.purchases} post={post} />
+      <Spending purchases={state.purchases} spentCents={state.spentThisMonthCents} post={post} />
       {setUp && settings}
     </>
   );
@@ -160,7 +160,10 @@ function PayPal({
       </p>
       {state.paypal.linked ? (
         <div className="row">
-          <span>Linked{state.paypal.email ? ` to ${state.paypal.email}` : ""}</span>
+          <span>
+            Linked
+            {state.paypal.email && <span className="small muted email">{state.paypal.email}</span>}
+          </span>
           <button className="link" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
             Unlink
           </button>
@@ -385,13 +388,16 @@ const STATUS: Record<Purchase["status"], string> = {
   failed: "Failed",
 };
 
-function Spending({ purchases, post }: { purchases: Purchase[]; post: Post }) {
+function Spending({ purchases, spentCents, post }: { purchases: Purchase[]; spentCents: number; post: Post }) {
   const [open, setOpen] = useState<string | null>(null);
   if (!purchases.length) return null;
   return (
     <section>
       <h2>Spending</h2>
-      <p className="lead">Everything the agent tried to buy, and what your rules decided.</p>
+      <p className="lead">
+        Your agent has spent <span className="amount-inline">{dollars(spentCents)}</span> this month. Below is everything
+        it tried to buy, and what your rules decided.
+      </p>
       <ul className="plain ledger">
         {purchases.map((p) => (
           <li key={p.id}>
