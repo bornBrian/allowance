@@ -3,7 +3,8 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { searchProducts, type Product } from "./channel3";
 import { anthropic, checkAiBudget, classifyRequest, MODEL, recordUsage } from "./claude";
-import type { Purchase, Wallet } from "./db";
+import type { Purchase } from "./db";
+import type { Actor } from "./session";
 import { describeRules } from "./describe";
 import { UserError } from "./errors";
 import { money } from "./guard";
@@ -22,9 +23,12 @@ export type AgentEvent =
 // 2. Let Claude search Channel3 and pick one product.
 // 3. Claude asks to buy it; the guard decides pay / ask / block.
 // 4. If the guard says pay, PayPal charges the saved account.
-export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentEvent) => void) {
-  if (!wallet.rules) throw new UserError("Set your rules first.");
-  if (!wallet.paypalTokenId) throw new UserError("Link PayPal first.");
+export async function runAgent(actor: Actor, request: string, emit: (e: AgentEvent) => void) {
+  const { wallet } = actor;
+  const member = actor.role === "member" ? { id: actor.member.id, name: actor.member.name } : null;
+  const whose = member ? `${wallet.ownerName ?? "The payer"}'s` : "Your";
+  if (!wallet.rules) throw new UserError(member ? `${whose} rules aren't set yet.` : "Set your rules first.");
+  if (!wallet.paypalTokenId) throw new UserError(member ? `${whose} PayPal isn't linked yet.` : "Link PayPal first.");
   const rules = wallet.rules;
   const ready = { ...wallet, rules, paypalTokenId: wallet.paypalTokenId };
 
@@ -85,7 +89,7 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
       asked = true;
 
       const outcome = await proposePurchase(
-        { wallet: ready, request, product, category, maxPrice, why: cleanLine(why, 400) },
+        { wallet: ready, request, product, category, maxPrice, why: cleanLine(why, 400), member },
         { status: (text) => emit({ type: "status", text }) },
       );
       purchase = outcome.purchase;

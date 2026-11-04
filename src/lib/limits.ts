@@ -26,6 +26,9 @@ export const LIMITS = {
   paypal: { wallet: [{ max: 10, seconds: HOUR }], ip: [{ max: 40, seconds: HOUR }] },
   purchase: { wallet: [{ max: 20, seconds: MINUTE }], ip: [{ max: 60, seconds: MINUTE }] },
   verify: { ip: [{ max: 20, seconds: HOUR }] },
+  invite: { wallet: [{ max: 10, seconds: HOUR }], ip: [{ max: 30, seconds: DAY }] },
+  join: { ip: [{ max: 20, seconds: HOUR }] },
+  people: { wallet: [{ max: 30, seconds: HOUR }] },
   newWallet: { ip: [{ max: 20, seconds: DAY }] },
   read: { ip: [{ max: 120, seconds: MINUTE }] },
 } satisfies Record<string, Limits>;

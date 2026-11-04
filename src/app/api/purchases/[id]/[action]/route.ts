@@ -5,7 +5,7 @@ import { money } from "@/lib/guard";
 import { clientIp, failure } from "@/lib/http";
 import { limit } from "@/lib/limits";
 import { charge, refund } from "@/lib/paypal";
-import { currentWallet } from "@/lib/session";
+import { currentActor } from "@/lib/session";
 import { appState } from "@/lib/state";
 
 // The person's answer to a purchase: approve, decline, or refund one already paid.
@@ -14,11 +14,18 @@ import { appState } from "@/lib/state";
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string; action: string }> }) {
   try {
     const { id, action } = await ctx.params;
-    const wallet = await currentWallet();
+    const actor = await currentActor();
+    const { wallet } = actor;
     limit("purchase", { wallet: wallet.id, ip: await clientIp() });
     // Only this wallet's purchases are found, so ids from elsewhere do nothing.
     const purchase = getPurchase(wallet.id, id);
     if (!purchase) throw new UserError("Purchase not found.", 404);
+    // People the payer looks after can cancel their own requests; only the payer approves or refunds.
+    if (actor.role === "member") {
+      if (action !== "decline" || purchase.memberId !== actor.member.id) {
+        throw new UserError(`Only ${wallet.ownerName ?? "the person who pays"} can do that.`, 403);
+      }
+    }
 
     if (action === "decline") {
       if (!claimStatus(id, "waiting", "declined")) throw conflict();
@@ -77,7 +84,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string; a
       throw new UserError("Unknown action.", 404);
     }
 
-    return Response.json(appState(await currentWallet()));
+    return Response.json(appState(await currentActor()));
   } catch (err) {
     return failure(err, "Something went wrong with that purchase.");
   }

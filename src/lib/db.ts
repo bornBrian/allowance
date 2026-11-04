@@ -56,14 +56,41 @@ function conn(): DatabaseSync {
     count INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   );
+  -- People who spend from someone else's allowance (a teen, an elderly parent).
+  CREATE TABLE IF NOT EXISTS members (
+    id TEXT PRIMARY KEY,
+    wallet_id TEXT NOT NULL REFERENCES wallets(id),
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS members_wallet ON members(wallet_id);
+  -- Single-use invite links the payer sends to the person they look after.
+  CREATE TABLE IF NOT EXISTS invites (
+    token TEXT PRIMARY KEY,
+    wallet_id TEXT NOT NULL REFERENCES wallets(id),
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+  );
+  -- The payer's devices that get approval requests as notifications.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    wallet_id TEXT NOT NULL REFERENCES wallets(id),
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
   // Columns added after the first version; SQLite has no "ADD COLUMN IF NOT EXISTS".
-  const have = new Set((db.prepare("PRAGMA table_info(wallets)").all() as unknown as { name: string }[]).map((c) => c.name));
-  for (const [name, type] of [
-    ["paypal_setup_token", "TEXT"],
-    ["verified_at", "TEXT"],
+  for (const [table, name] of [
+    ["wallets", "paypal_setup_token"],
+    ["wallets", "verified_at"],
+    ["wallets", "owner_name"],
+    ["purchases", "member_id"],
   ]) {
-    if (!have.has(name)) db.exec(`ALTER TABLE wallets ADD COLUMN ${name} ${type}`);
+    const have = (db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[]).map((c) => c.name);
+    if (!have.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} TEXT`);
   }
   opened = db;
   return db;
@@ -82,6 +109,7 @@ export interface Wallet {
   paypalEmail: string | null;
   paypalSetupToken: string | null; // the link attempt this browser started, if any
   verified: boolean; // passed the human check
+  ownerName: string | null; // how the people they look after see them, e.g. "Brian"
 }
 
 export interface Purchase {
@@ -100,6 +128,8 @@ export interface Purchase {
   checks: Check[];
   paypalOrderId: string | null;
   paypalCaptureId: string | null;
+  memberId: string | null; // who asked: a member, or null for the payer
+  memberName: string | null;
 }
 
 interface WalletRow {
@@ -110,6 +140,7 @@ interface WalletRow {
   paypal_email: string | null;
   paypal_setup_token: string | null;
   verified_at: string | null;
+  owner_name: string | null;
 }
 
 interface PurchaseRow {
@@ -128,6 +159,8 @@ interface PurchaseRow {
   checks_json: string;
   paypal_order_id: string | null;
   paypal_capture_id: string | null;
+  member_id: string | null;
+  member_name: string | null;
 }
 
 export function walletExists(id: string): boolean {
@@ -145,6 +178,7 @@ export function getWallet(id: string): Wallet {
     paypalEmail: row.paypal_email,
     paypalSetupToken: row.paypal_setup_token,
     verified: row.verified_at !== null,
+    ownerName: row.owner_name,
   };
 }
 
@@ -160,6 +194,113 @@ export function savePaypal(walletId: string, tokenId: string | null, email: stri
 
 export function saveSetupToken(walletId: string, setupToken: string) {
   conn().prepare("UPDATE wallets SET paypal_setup_token = ? WHERE id = ?").run(setupToken, walletId);
+}
+
+export function setOwnerName(walletId: string, name: string) {
+  conn().prepare("UPDATE wallets SET owner_name = ? WHERE id = ?").run(name, walletId);
+}
+
+// ---------- People the payer looks after ----------
+
+export interface Member {
+  id: string;
+  walletId: string;
+  name: string;
+  createdAt: string;
+}
+
+interface MemberRow {
+  id: string;
+  wallet_id: string;
+  name: string;
+  created_at: string;
+}
+
+const toMember = (r: MemberRow): Member => ({ id: r.id, walletId: r.wallet_id, name: r.name, createdAt: r.created_at });
+
+export function getMember(id: string): Member | null {
+  const row = conn().prepare("SELECT * FROM members WHERE id = ?").get(id) as unknown as MemberRow | undefined;
+  return row ? toMember(row) : null;
+}
+
+export function listMembers(walletId: string): Member[] {
+  const rows = conn().prepare("SELECT * FROM members WHERE wallet_id = ? ORDER BY created_at").all(walletId) as unknown as MemberRow[];
+  return rows.map(toMember);
+}
+
+export function addMember(m: { id: string; walletId: string; name: string }) {
+  conn()
+    .prepare("INSERT INTO members (id, wallet_id, name, created_at) VALUES (?, ?, ?, ?)")
+    .run(m.id, m.walletId, m.name, new Date().toISOString());
+}
+
+// Removing someone keeps their purchases on record; they just can't ask any more.
+export function removeMember(walletId: string, id: string): boolean {
+  return conn().prepare("DELETE FROM members WHERE wallet_id = ? AND id = ?").run(walletId, id).changes === 1;
+}
+
+export function createInvite(i: { token: string; walletId: string; name: string; expiresAt: Date }) {
+  conn()
+    .prepare("INSERT INTO invites (token, wallet_id, name, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+    .run(i.token, i.walletId, i.name, new Date().toISOString(), i.expiresAt.toISOString());
+}
+
+export interface Invite {
+  walletId: string;
+  name: string;
+  ownerName: string | null;
+}
+
+// Looks at an invite without using it, for the join page.
+export function peekInvite(token: string): Invite | null {
+  const row = conn()
+    .prepare(
+      `SELECT i.wallet_id, i.name, w.owner_name FROM invites i JOIN wallets w ON w.id = i.wallet_id
+       WHERE i.token = ? AND i.used_at IS NULL AND i.expires_at > ?`,
+    )
+    .get(token, new Date().toISOString()) as unknown as
+    | { wallet_id: string; name: string; owner_name: string | null }
+    | undefined;
+  return row ? { walletId: row.wallet_id, name: row.name, ownerName: row.owner_name } : null;
+}
+
+// Uses an invite once, atomically: two people opening the same link can't both join.
+export function redeemInvite(token: string): Invite | null {
+  const invite = peekInvite(token);
+  if (!invite) return null;
+  const now = new Date().toISOString();
+  const used =
+    conn()
+      .prepare("UPDATE invites SET used_at = ? WHERE token = ? AND used_at IS NULL AND expires_at > ?")
+      .run(now, token, now).changes === 1;
+  return used ? invite : null;
+}
+
+// ---------- Approval notifications ----------
+
+export interface PushSubscriptionRow {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+export function savePushSubscription(walletId: string, sub: PushSubscriptionRow) {
+  conn()
+    .prepare(
+      `INSERT INTO push_subscriptions (endpoint, wallet_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET wallet_id = excluded.wallet_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+    )
+    .run(sub.endpoint, walletId, sub.p256dh, sub.auth, new Date().toISOString());
+}
+
+export function listPushSubscriptions(walletId: string): PushSubscriptionRow[] {
+  return conn()
+    .prepare("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE wallet_id = ?")
+    .all(walletId) as unknown as PushSubscriptionRow[];
+}
+
+export function removePushSubscription(endpoint: string) {
+  conn().prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint);
 }
 
 export function markVerified(walletId: string) {
@@ -183,18 +324,27 @@ function toPurchase(r: PurchaseRow): Purchase {
     checks: JSON.parse(r.checks_json) as Check[],
     paypalOrderId: r.paypal_order_id,
     paypalCaptureId: r.paypal_capture_id,
+    memberId: r.member_id,
+    memberName: r.member_name,
   };
 }
 
-export function listPurchases(walletId: string): Purchase[] {
-  const rows = conn()
-    .prepare("SELECT * FROM purchases WHERE wallet_id = ? ORDER BY created_at DESC")
-    .all(walletId) as unknown as PurchaseRow[];
+const PURCHASE_SELECT = "SELECT p.*, m.name AS member_name FROM purchases p LEFT JOIN members m ON m.id = p.member_id";
+
+// All of a wallet's purchases, or only one member's when memberId is given.
+export function listPurchases(walletId: string, memberId?: string): Purchase[] {
+  const rows = (
+    memberId
+      ? conn()
+          .prepare(PURCHASE_SELECT + " WHERE p.wallet_id = ? AND p.member_id = ? ORDER BY p.created_at DESC")
+          .all(walletId, memberId)
+      : conn().prepare(PURCHASE_SELECT + " WHERE p.wallet_id = ? ORDER BY p.created_at DESC").all(walletId)
+  ) as unknown as PurchaseRow[];
   return rows.map(toPurchase);
 }
 
 export function getPurchase(walletId: string, id: string): Purchase | null {
-  const row = conn().prepare("SELECT * FROM purchases WHERE wallet_id = ? AND id = ?").get(walletId, id) as unknown as
+  const row = conn().prepare(PURCHASE_SELECT + " WHERE p.wallet_id = ? AND p.id = ?").get(walletId, id) as unknown as
     | PurchaseRow
     | undefined;
   return row ? toPurchase(row) : null;
@@ -227,13 +377,14 @@ export interface NewPurchase {
   status: Status;
   why: string;
   checks: Check[];
+  memberId?: string | null;
 }
 
 export function addPurchase(p: NewPurchase) {
   conn().prepare(
     `INSERT INTO purchases (id, wallet_id, created_at, request, product_id, title, image, shop, url, category,
-       amount_cents, status, why, checks_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       amount_cents, status, why, checks_json, member_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     p.id,
     p.walletId,
@@ -249,6 +400,7 @@ export function addPurchase(p: NewPurchase) {
     p.status,
     p.why,
     JSON.stringify(p.checks),
+    p.memberId ?? null,
   );
 }
 

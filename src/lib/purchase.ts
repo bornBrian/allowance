@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { recheck as channel3Recheck, type Product } from "./channel3";
 import { addPurchase, getPurchase, paidHistory, setStatus, type Purchase, type Wallet } from "./db";
 import { cents, decide, money } from "./guard";
+import { notifyPayer, type ApprovalNotice } from "./notify";
 import { charge as paypalCharge } from "./paypal";
 
 // What happens when the agent asks to buy a product:
@@ -16,6 +17,7 @@ export interface PurchaseRequest {
   category: string; // decided from the person's words before any product was seen
   maxPrice?: number | null; // a price in dollars the person named in the request
   why: string; // the agent's reason, shown to the person
+  member?: { id: string; name: string } | null; // someone the payer looks after, or null for the payer
 }
 
 // The outside world, swappable in tests.
@@ -23,15 +25,16 @@ export interface Services {
   recheck: typeof channel3Recheck;
   charge: typeof paypalCharge;
   status: (text: string) => void;
+  notify: (walletId: string, notice: ApprovalNotice) => Promise<void>;
 }
 
-const live: Services = { recheck: channel3Recheck, charge: paypalCharge, status: () => {} };
+const live: Services = { recheck: channel3Recheck, charge: paypalCharge, status: () => {}, notify: notifyPayer };
 
 export async function proposePurchase(
-  { wallet, request, product, category, maxPrice, why }: PurchaseRequest,
+  { wallet, request, product, category, maxPrice, why, member }: PurchaseRequest,
   services: Partial<Services> = {},
 ): Promise<{ purchase: Purchase; result: string }> {
-  const { recheck, charge, status } = { ...live, ...services };
+  const { recheck, charge, status, notify } = { ...live, ...services };
 
   status(`Checking ${product.shop} for the current price`);
   const checkout = await recheck(product);
@@ -61,6 +64,7 @@ export async function proposePurchase(
     status: decision.verdict === "pay" ? "paying" : decision.verdict === "ask" ? "waiting" : "blocked",
     why,
     checks: decision.checks,
+    memberId: member?.id ?? null,
   });
 
   let result: string;
@@ -85,7 +89,17 @@ export async function proposePurchase(
       result = "PayPal declined the payment. Nothing was charged.";
     }
   } else if (decision.verdict === "ask") {
-    result = `Not paid yet. The person has been asked to approve it, because: ${decision.reasons.join(" ")}`;
+    if (member) {
+      // The payer may be anywhere: their phone gets the request with Approve and Decline on it.
+      await notify(wallet.id, {
+        purchaseId: id,
+        title: `${member.name} wants ${money(decision.amountCents)} at ${product.shop}`,
+        body: `${product.title}. ${decision.reasons[0] ?? ""}`.trim(),
+      });
+      result = `Not paid yet. ${wallet.ownerName ?? "The payer"} has been asked to approve it, because: ${decision.reasons.join(" ")}`;
+    } else {
+      result = `Not paid yet. The person has been asked to approve it, because: ${decision.reasons.join(" ")}`;
+    }
   } else {
     result = `Blocked. Nothing was paid, because: ${decision.reasons.join(" ")}`;
   }
