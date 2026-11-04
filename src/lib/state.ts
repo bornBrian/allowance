@@ -30,6 +30,7 @@ export interface AppState {
   };
   humanCheck: { siteKey: string; needed: true } | { siteKey: null; needed: false };
   spentThisMonthCents: number; // everything paid this calendar month (UTC), for this person
+  outsideBudgetsCents: number; // paid this week in categories no budget counts, so nothing is spent out of sight
   purchases: Purchase[];
   members: { id: string; name: string }[]; // people the payer looks after (payer only)
   pushKey: string | null; // for turning on approval notifications (payer only)
@@ -43,6 +44,7 @@ export function appState(actor: Actor): AppState {
   const now = new Date();
   const remaining: Remaining[] = [];
   const rules = wallet.rules;
+  let outsideBudgetsCents = 0;
 
   if (rules) {
     for (const c of rules.categories) {
@@ -64,6 +66,9 @@ export function appState(actor: Actor): AppState {
         budgetCents: cents(rules.overallBudget),
         spentCents: spentSince(history, periodStart(period, now), () => true),
       });
+    } else {
+      const budgeted = new Set(rules.categories.filter((c) => c.budget !== null).map((c) => c.name.toLowerCase()));
+      outsideBudgetsCents = spentSince(history, periodStart("week", now), (p) => !budgeted.has(p.category.toLowerCase()));
     }
   }
 
@@ -88,6 +93,7 @@ export function appState(actor: Actor): AppState {
     },
     humanCheck: humanCheck(actor),
     spentThisMonthCents,
+    outsideBudgetsCents,
     purchases,
     members: member ? [] : listMembers(wallet.id).map((m) => ({ id: m.id, name: m.name })),
     pushKey: member ? null : vapidPublicKey(),

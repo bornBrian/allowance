@@ -1868,3 +1868,8 @@ span.thumb {
   max-width: 320px;
   text-align: center;
 }
+
+.pot.outside {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}

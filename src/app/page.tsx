@@ -392,7 +392,7 @@ function OkCard({ purchase: p, state, post, open }: { purchase: Purchase; state:
 }
 
 function Pots({ state }: { state: AppState }) {
-  if (!state.remaining.length) return null;
+  if (!state.remaining.length && !state.outsideBudgetsCents) return null;
   return (
     <div className="pots">
       {state.remaining.map((r) => {
@@ -412,6 +412,14 @@ function Pots({ state }: { state: AppState }) {
           </div>
         );
       })}
+      {state.outsideBudgetsCents > 0 && (
+        <div className="pot outside">
+          <div className="pot-head">
+            <span>Outside your budgets</span>
+            <span>{dollars(state.outsideBudgetsCents)} this week</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

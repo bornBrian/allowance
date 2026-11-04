@@ -109,7 +109,13 @@ export async function classifyRequest(request: string, rules: Rules): Promise<Cl
     max_tokens: 500,
     thinking: { type: "disabled" },
     output_config: { effort: "low", format: zodOutputFormat(Classification) },
-    system: `Classify a shopping request. The person's spending categories are: ${names}.`,
+    system:
+      `Classify a shopping request. The person's spending categories are: ${names}. ` +
+      "Use the category whose meaning fits: a broad household category such as home covers everyday things for " +
+      "the house and the person, including clothes, kitchen things and small furniture; groceries means food, drink " +
+      "and household consumables; gifts are things bought for someone else. Only give a new short lowercase name " +
+      "when none of the categories could reasonably cover it (for example medicine when the only categories are " +
+      "gifts and groceries), so that the person is asked about it.",
     messages: [{ role: "user", content: request }],
   });
   recordUsage(response.usage);
