@@ -39,10 +39,12 @@ export function Speak({
   value,
   onChange,
   disabled,
+  className = "secondary",
 }: {
   value: string;
   onChange: (text: string) => void;
   disabled?: boolean;
+  className?: string;
 }) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -101,7 +103,7 @@ export function Speak({
     <>
       <button
         type="button"
-        className="secondary"
+        className={className}
         onClick={listening ? stop : start}
         disabled={disabled}
         aria-pressed={listening}

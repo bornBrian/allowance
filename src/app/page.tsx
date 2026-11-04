@@ -42,26 +42,42 @@ export default function Home() {
     setState(data as AppState);
   }, []);
 
+  const narrow = state?.role === "member";
+  const landing = state?.role === "payer" && !(state.rulesText && state.paypal.linked);
   return (
-    <main>
-      {state ? (
-        <Sections state={state} setState={setState} post={post} />
-      ) : (
-        <Hero title="Give your shopping agent an allowance, not your wallet." />
-      )}
-      {error && <p className="error">{error}</p>}
-    </main>
+    <>
+      <AppBar state={state} navy={landing} />
+      <main className={narrow ? "narrow" : landing ? "flush" : undefined}>
+        {state && <Sections state={state} setState={setState} post={post} />}
+        {error && <p className="error">{error}</p>}
+      </main>
+    </>
   );
 }
 
 type Post = (url: string, body?: unknown, method?: string) => Promise<void>;
 
-function Hero({ title, children }: { title: string; children?: React.ReactNode }) {
+function AppBar({ state, navy }: { state: AppState | null; navy: boolean }) {
   return (
-    <header className="hero">
-      <p className="wordmark">Allowance</p>
-      <h1>{title}</h1>
-      {children && <p>{children}</p>}
+    <header className={navy ? "appbar on-navy" : "appbar"}>
+      <div className="appbar-inner">
+        <p className="wordmark">
+          <span className="mark" aria-hidden>
+            A
+          </span>
+          Allowance
+        </p>
+        {state?.role === "member" && (
+          <span className="who">
+            <b>{state.memberName}</b> · from {state.ownerName ?? "your family"}
+          </span>
+        )}
+        {state?.role === "payer" && state.ownerName && (
+          <span className="who">
+            <b>{state.ownerName}</b> · pays
+          </span>
+        )}
+      </div>
     </header>
   );
 }
@@ -69,65 +85,231 @@ function Hero({ title, children }: { title: string; children?: React.ReactNode }
 function Sections({ state, setState, post }: { state: AppState; setState: (s: AppState) => void; post: Post }) {
   const refresh = () => loadState().then(setState, () => {});
 
-  // Someone the payer looks after: ask, see what's left, see their own requests.
+  // Someone the payer looks after: big, simple, voice first.
   if (state.role === "member") {
     const owner = state.ownerName ?? "The person who set this up";
     return (
-      <>
-        <Hero title={`Hi ${state.memberName}.`}>
-          {owner} has given you an allowance. Say what you need. If it fits, it&rsquo;s paid straight away. If not,{" "}
-          {state.ownerName ?? "they"} {state.ownerName ? "is" : "are"} asked first.
-        </Hero>
-        <MemberCard state={state} />
+      <div className="member">
+        <section className="member-hero" style={{ marginTop: 0 }}>
+          <h1>Hi {state.memberName}.</h1>
+          <p>
+            {owner} has given you an allowance. Say what you need. If it fits, it&rsquo;s paid straight away. If not,{" "}
+            {state.ownerName ?? "they"} {state.ownerName ? "is" : "are"} asked first.
+          </p>
+          {state.remaining.length > 0 && (
+            <div className="left">
+              <p className="label" style={{ margin: 0, color: "var(--navy-muted)", fontSize: 15 }}>
+                What&rsquo;s left
+              </p>
+              <Budgets state={state} />
+            </div>
+          )}
+        </section>
         <Ask state={state} refresh={refresh} post={post} />
         <Spending state={state} post={post} title="Your requests" />
-      </>
+      </div>
     );
   }
 
   const setUp = Boolean(state.rulesText) && state.paypal.linked;
   if (setUp) {
+    const waiting = state.purchases.filter((p) => p.status === "waiting");
     return (
       <>
-        <Hero title="Give your shopping agent an allowance, not your wallet.">
-          Set the rules once. You, or someone you look after, ask for what&rsquo;s needed. The agent shops real stores
-          and pays with your PayPal only when your rules say yes.
-        </Hero>
-        <NeedsYourOk state={state} post={post} />
-        <AllowanceCard state={state} post={post} />
-        <People state={state} post={post} />
-        <Ask state={state} refresh={refresh} post={post} />
-        <Spending state={state} post={post} title="Spending" />
+        <h1 className="greeting">Hello{state.ownerName ? `, ${state.ownerName}` : ""}.</h1>
+        <p className="lead" style={{ marginBottom: 0 }}>
+          {waiting.length
+            ? `${waiting.length === 1 ? "One request is" : `${waiting.length} requests are`} waiting for your OK.`
+            : "Everything is within your rules."}
+        </p>
+        <div className="dash">
+          <div className="dash-main">
+            <NeedsYourOk state={state} post={post} />
+            <Ask state={state} refresh={refresh} post={post} />
+            <Spending state={state} post={post} title="Activity" />
+          </div>
+          <aside className="dash-side">
+            <MoneyCard state={state} label="Spent this month" />
+            <Settings state={state} post={post} />
+            <People state={state} post={post} />
+          </aside>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <Hero title="Give your shopping agent an allowance, not your wallet.">
-        Set the rules once. You, or someone you look after, ask for what&rsquo;s needed. The agent shops real stores and
-        pays with your PayPal only when your rules say yes.
-      </Hero>
-      {state.humanCheck.needed && <Welcome siteKey={state.humanCheck.siteKey} setState={setState} />}
-      <section className="step">
-        <StepTitle n={1} done={Boolean(state.rulesText)}>
-          Your rules
-        </StepTitle>
-        <Rules state={state} post={post} />
+      <Landing />
+      <section id="setup" className="setup">
+        <h2>Set up your allowance</h2>
+        <p className="lead">Two minutes. You can change everything later.</p>
+        {state.humanCheck.needed && <Welcome siteKey={state.humanCheck.siteKey} setState={setState} />}
+        <div className="panel">
+          <div className="step">
+            <StepTitle n={1} done={Boolean(state.rulesText)}>
+              Set your rules
+            </StepTitle>
+            <Rules state={state} post={post} />
+          </div>
+          <div className="step">
+            <StepTitle n={2} done={state.paypal.linked}>
+              Link PayPal
+            </StepTitle>
+            <PayPal state={state} post={post} setState={setState} />
+          </div>
+          <div className="step">
+            <StepTitle n={3} done={false}>
+              Try it
+            </StepTitle>
+            <p className="lead">
+              Once both are done, ask for something here, then invite someone you look after from their own phone.
+            </p>
+          </div>
+        </div>
       </section>
-      <section className="step">
-        <StepTitle n={2} done={state.paypal.linked}>
-          Link PayPal
-        </StepTitle>
-        <PayPal state={state} post={post} setState={setState} />
-      </section>
-      <section className="step">
-        <StepTitle n={3} done={false}>
-          Ask
-        </StepTitle>
-        <Ask state={state} refresh={refresh} post={post} bare />
-      </section>
-      <Spending state={state} post={post} title="Spending" />
+    </>
+  );
+}
+
+// A first visit: say what it is, and show it happening on a phone.
+function Landing() {
+  return (
+    <>
+      <div className="hero bleed">
+        <div className="hero-inner">
+          <div>
+            <h1>
+              Give your shopping agent an <em>allowance</em>, not your wallet.
+            </h1>
+            <p className="sub">
+              The people you look after ask for what they need, in their own words. An AI agent finds it in real shops and
+              pays with your PayPal, only within rules you set. Anything else comes to your phone first.
+            </p>
+            <div className="cta">
+              <button className="big" onClick={() => document.getElementById("setup")?.scrollIntoView({ block: "start" })}>
+                Set up an allowance
+              </button>
+              <span className="fine">PayPal sandbox. No real money moves.</span>
+            </div>
+          </div>
+          <div className="stage" aria-hidden>
+            <div className="device">
+              <div className="screen">
+                <div className="island" />
+                <div className="status">
+                  <span>9:41</span>
+                  <span>100%</span>
+                </div>
+                <div className="mini-bar">
+                  <span className="mark">A</span>Allowance
+                </div>
+                <div className="hi">Hi Mum.</div>
+                <div className="mini-card">
+                  <div className="l">Groceries left this week</div>
+                  <div className="n">$43.53</div>
+                  <div className="track">
+                    <span />
+                  </div>
+                </div>
+                <div className="mini-ask">A warm scarf, under $25</div>
+                <div className="mini-speak">Speak</div>
+                <div className="mini-row">
+                  <span className="sq" />
+                  <span>
+                    Winter scarf · $16.47
+                    <br />
+                    <span className="w">Waiting for Brian</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="push">
+              <div className="head">
+                <span className="mark">A</span>
+                ALLOWANCE
+                <span className="when">now</span>
+              </div>
+              <div className="t">Mum wants $16.47 at landsend.com</div>
+              <div className="b">Cashtouch Pattern Winter Scarf. First purchase from this shop.</div>
+              <div className="acts">
+                <span>Approve</span>
+                <span>Decline</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="facts bleed">
+        <div className="facts-inner">
+          <div className="fact">
+            <b>63 million</b>
+            <span>Americans care for a family member</span>
+            <small>AARP and National Alliance for Caregiving, 2025</small>
+          </div>
+          <div className="fact">
+            <b>18+</b>
+            <span>to hold a PayPal account of your own, so teens can&rsquo;t</span>
+            <small>PayPal user agreement</small>
+          </div>
+          <div className="fact">
+            <b>0</b>
+            <span>payments outside your rules without your OK</span>
+            <small>Checked by plain code, not by the AI</small>
+          </div>
+        </div>
+      </div>
+
+      <div className="how">
+        <h2>How it works</h2>
+        <p className="lead">Three things, once. Then it just works.</p>
+        <div className="tiles">
+          <div className="tile yellow">
+            <h3>Set the rules in your words</h3>
+            <p>Type them or say them. The agent can never pay outside them.</p>
+            <div className="ui">
+              <div className="ui-card">&ldquo;$60 a week on groceries. Gifts up to $40. No subscriptions.&rdquo;</div>
+              <div className="ui-card">
+                <span className="k">Understood</span>
+                <br />
+                Groceries: $60 a week · Gifts: up to $40
+              </div>
+            </div>
+          </div>
+          <div className="tile white">
+            <h3>Invite someone you look after</h3>
+            <p>Mum, or your teenager, gets a link. They ask from their own phone.</p>
+            <div className="ui">
+              <div className="ui-card">
+                <span className="k">Mum asked</span>
+                <br />
+                Bread and milk for the week
+              </div>
+              <div className="ui-card">
+                <span className="ok">Paid $8.40 with PayPal</span>
+                <br />
+                <span className="k">Within the groceries budget</span>
+              </div>
+            </div>
+          </div>
+          <div className="tile navy">
+            <h3>Approve from your lock screen</h3>
+            <p>Anything outside your rules comes to you first. One tap, and PayPal pays.</p>
+            <div className="ui">
+              <div className="ui-card">
+                <b>Mum wants $16.47</b>
+                <br />
+                <span className="k">First purchase from landsend.com</span>
+                <div className="btns">
+                  <span>Approve</span>
+                  <span>Decline</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
@@ -137,7 +319,7 @@ function StepTitle({ n, done, children }: { n: number; done: boolean; children: 
     <h2 className="step-title">
       <span className="step-n">{n}</span>
       {children}
-      {done && <span className="small paid"> Done</span>}
+      {done && <span className="done">Done</span>}
     </h2>
   );
 }
@@ -146,12 +328,12 @@ function StepTitle({ n, done, children }: { n: number; done: boolean; children: 
 function Welcome({ siteKey, setState }: { siteKey: string; setState: (s: AppState) => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
-    <section>
-      <h2>Before you start</h2>
+    <div className="panel" style={{ marginBottom: 20 }}>
+      <h2 className="step-title">Before you start</h2>
       <p className="lead">A quick check that you&rsquo;re a person. It keeps this demo free for everyone.</p>
       <HumanCheck siteKey={siteKey} onPassed={setState} onError={setError} />
       {error && <p className="error">{error}</p>}
-    </section>
+    </div>
   );
 }
 
@@ -188,73 +370,18 @@ function NeedsYourOk({ state, post }: { state: AppState; post: Post }) {
   );
 }
 
-// What's spent, what's left, the rules and PayPal, at a glance. Rules open for editing in place.
-function AllowanceCard({ state, post }: { state: AppState; post: Post }) {
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+// The allowance as a card: what's been spent, and what's left of each budget.
+function MoneyCard({ state, label }: { state: AppState; label: string }) {
   return (
-    <section className="card">
-      <div className="card-top">
-        <div>
-          <p className="small muted">Spent this month</p>
-          <p className="big-number">{dollars(state.spentThisMonthCents)}</p>
-        </div>
-        <Budgets state={state} />
-      </div>
-
-      <div className="card-row">
-        <div className="card-label">Rules</div>
-        {editing ? (
-          <div style={{ flex: 1 }}>
-            <Rules state={state} post={post} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
-          </div>
-        ) : (
-          <>
-            <p className="card-text">{state.rulesSummary.join(" ")}</p>
-            <button className="link" onClick={() => setEditing(true)}>
-              Edit
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="card-row">
-        <div className="card-label">PayPal</div>
-        <p className="card-text">
-          Linked
-          {state.paypal.email && <span className="small muted email">{state.paypal.email}</span>}
-        </p>
-        <button className="link" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
-          Unlink
-        </button>
-      </div>
-      {error && <p className="error">{error}</p>}
-    </section>
-  );
-}
-
-// The same card for someone the payer looks after: read-only, their own spending.
-function MemberCard({ state }: { state: AppState }) {
-  return (
-    <section className="card">
-      <div className="card-top">
-        <div>
-          <p className="small muted">You&rsquo;ve spent this month</p>
-          <p className="big-number">{dollars(state.spentThisMonthCents)}</p>
-        </div>
-        <Budgets state={state} />
-      </div>
-      <div className="card-row">
-        <div className="card-label">Rules</div>
-        <p className="card-text">{state.rulesSummary.join(" ") || "No rules set yet."}</p>
-      </div>
+    <section className="money-card">
+      <p className="label">{label}</p>
+      <p className="big-number">{dollars(state.spentThisMonthCents)}</p>
+      {state.remaining.length === 0 ? <p className="sub">No weekly or monthly budgets set.</p> : <Budgets state={state} />}
     </section>
   );
 }
 
 function Budgets({ state }: { state: AppState }) {
-  if (!state.remaining.length) return null;
   return (
     <ul className="plain budgets">
       {state.remaining.map((r) => {
@@ -265,11 +392,11 @@ function Budgets({ state }: { state: AppState }) {
             <div className="budget-text">
               <span>{r.label}</span>
               <span className="amount">
-                {dollars(left)} <span className="muted">left of {dollars(r.budgetCents)} this {r.period}</span>
+                {dollars(left)} <span className="muted">left this {r.period}</span>
               </span>
             </div>
             <div className="bar" aria-hidden>
-              <span style={{ width: `${used * 100}%` }} />
+              <span style={{ width: `${used > 0 ? Math.max(used * 100, 3) : 0}%` }} />
             </div>
           </li>
         );
@@ -278,21 +405,65 @@ function Budgets({ state }: { state: AppState }) {
   );
 }
 
+// The payer's rules and PayPal, each one line until opened.
+function Settings({ state, post }: { state: AppState; post: Post }) {
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section className="panel settings">
+      <h2>Your allowance</h2>
+      <div className="row-item">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="row-label">Rules</div>
+          {editing ? (
+            <Rules state={state} post={post} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
+          ) : (
+            <p className="row-text">{state.rulesSummary.join(" ")}</p>
+          )}
+        </div>
+        {!editing && (
+          <button className="link" onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        )}
+      </div>
+      <div className="row-item">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="row-label">Paid with PayPal</div>
+          <p className="row-text">
+            {state.paypal.email && (
+              <span className="email" title={state.paypal.email}>
+                {state.paypal.email}
+              </span>
+            )}
+          </p>
+        </div>
+        <button className="link" onClick={() => post("/api/paypal/unlink").catch((e) => setError(e.message))}>
+          Unlink
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </section>
+  );
+}
+
 // The people the payer looks after: invite, see who joined, and get their requests on this phone.
 function People({ state, post }: { state: AppState; post: Post }) {
   const [error, setError] = useState<string | null>(null);
   return (
-    <section>
+    <section className="panel people-panel">
       <h2>People you look after</h2>
       <p className="lead">
-        Give someone this allowance on their own phone: a teenager, or a parent who needs a hand with shopping. They ask
-        in their own words. Anything outside your rules comes to you first.
+        They ask from their own phone. Anything outside your rules comes to you first.
       </p>
       {state.members.length > 0 && (
         <ul className="plain people">
           {state.members.map((m) => (
             <li key={m.id}>
-              <span>{m.name}</span>
+              <span className="avatar" aria-hidden>
+                {initial(m.name)}
+              </span>
+              <span className="name">{m.name}</span>
               <button
                 className="link"
                 onClick={() => post(`/api/members/${m.id}`, undefined, "DELETE").catch((e) => setError(e.message))}
@@ -344,7 +515,7 @@ function InviteForm({ ownerName }: { ownerName: string | null }) {
     return (
       <div className="invite">
         <p style={{ margin: "0 0 8px" }}>
-          Send this link to <b>{link.name}</b>. It works once, for 7 days.
+          Send this to <b>{link.name}</b>. It works once, for 7 days.
         </p>
         <input type="text" readOnly value={link.url} aria-label="Invite link" onFocus={(e) => e.target.select()} />
         <div className="row">
@@ -431,7 +602,7 @@ function Rules({
   if (!open) {
     return (
       <div className="folded">
-        <p className="card-text">{state.rulesSummary.join(" ")}</p>
+        <p className="row-text">{state.rulesSummary.join(" ")}</p>
         <button className="link" onClick={() => setOpen(true)}>
           Edit
         </button>
@@ -441,7 +612,7 @@ function Rules({
 
   return (
     <div>
-      {!state.rulesText && <p className="lead">Tell the agent what it may spend, in your own words. Type it or say it.</p>}
+      {!state.rulesText && <p className="lead">What may the agent spend? Write it the way you&rsquo;d say it, or press Speak.</p>}
       <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Your spending rules" />
       <div className="row">
         <button onClick={save} disabled={busy || !changed}>
@@ -473,7 +644,7 @@ function PayPal({ state, post, setState }: { state: AppState; post: Post; setSta
     <div>
       {state.paypal.linked ? (
         <div className="folded">
-          <p className="card-text">
+          <p className="row-text">
             Linked
             {state.paypal.email && <span className="small muted email">{state.paypal.email}</span>}
           </p>
@@ -487,7 +658,9 @@ function PayPal({ state, post, setState }: { state: AppState; post: Post; setSta
             Link once, in PayPal&rsquo;s own window. Allowance never sees your login, and you can unlink at any time.
           </p>
           {state.paypal.clientId ? (
-            <LinkPayPal clientId={state.paypal.clientId} onLinked={setState} onError={setError} />
+            <div style={{ maxWidth: 320 }}>
+              <LinkPayPal clientId={state.paypal.clientId} onLinked={setState} onError={setError} />
+            </div>
           ) : (
             <p className="muted">PayPal isn&rsquo;t set up on this server yet.</p>
           )}
@@ -506,7 +679,7 @@ const SUGGESTIONS = [
 
 const MEMBER_SUGGESTIONS = ["Bread and milk for the week", "A warm scarf, under $25", "Batteries for the TV remote"];
 
-function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refresh: () => void; bare?: boolean }) {
+function Ask({ state, post, refresh }: { state: AppState; post: Post; refresh: () => void }) {
   const [request, setRequest] = useState("");
   const [busy, setBusy] = useState(false);
   const [steps, setSteps] = useState<string[]>([]);
@@ -568,8 +741,9 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
 
   const searches = steps.filter((s) => s.startsWith("Searching")).length;
 
-  const body = (
-    <>
+  return (
+    <section className="ask-box">
+      <h2>{member ? "What do you need?" : "Ask for something"}</h2>
       {!ready && (
         <p className="lead">
           {member
@@ -587,7 +761,7 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
           type="text"
           value={request}
           onChange={(e) => setRequest(e.target.value)}
-          placeholder={member ? "What do you need? Type it or press Speak" : "What do you need?"}
+          placeholder={member ? "Type it, or press Speak" : "What do you need?"}
           disabled={!ready || busy}
           aria-label="What should the agent buy?"
         />
@@ -595,7 +769,12 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
           <button type="submit" disabled={!ready || busy || !request.trim()}>
             {busy ? "Working…" : "Ask"}
           </button>
-          <Speak value={request} onChange={setRequest} disabled={!ready || busy} />
+          <Speak
+            value={request}
+            onChange={setRequest}
+            disabled={!ready || busy}
+            className={member ? "speak" : "secondary"}
+          />
         </div>
       </form>
 
@@ -653,14 +832,6 @@ function Ask({ state, post, refresh, bare }: { state: AppState; post: Post; refr
           </div>
         </div>
       )}
-    </>
-  );
-
-  if (bare) return body;
-  return (
-    <section>
-      <h2>{member ? "What do you need?" : "Ask"}</h2>
-      {body}
     </section>
   );
 }
@@ -751,7 +922,7 @@ function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; rol
     return (
       <>
         <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={() => act("approve")} disabled={busy}>
+          <button className="yellow" onClick={() => act("approve")} disabled={busy}>
             Approve and pay {dollars(purchase.amountCents)}
           </button>
           <button className="secondary" onClick={() => act("decline")} disabled={busy}>
@@ -784,6 +955,7 @@ function statusLabel(p: Purchase, state: AppState): string {
   ];
 }
 
+// Purchases grouped by day, newest first, like a bank statement.
 function Spending({ state, post, title }: { state: AppState; post: Post; title: string }) {
   const { purchases } = state;
   const [open, setOpen] = useState<string | null>(null);
@@ -796,57 +968,70 @@ function Spending({ state, post, title }: { state: AppState; post: Post; title: 
   }, []);
 
   if (!purchases.length) return null;
-  const shown = all ? purchases : purchases.slice(0, 5);
+  const shown = all ? purchases : purchases.slice(0, 8);
+  const days: { label: string; items: Purchase[] }[] = [];
+  for (const p of shown) {
+    const label = dayLabel(p.createdAt);
+    const last = days[days.length - 1];
+    if (last?.label === label) last.items.push(p);
+    else days.push({ label, items: [p] });
+  }
+
   return (
-    <section>
+    <section className="activity">
       <h2>{title}</h2>
-      <p className="lead">
-        {state.role === "member"
-          ? "Everything you asked for, and what happened. Open one to see why."
-          : "Everything the agent tried to buy, and what your rules decided. Open one to see why."}
-      </p>
-      <ul className="plain ledger">
-        {shown.map((p) => (
-          <li key={p.id}>
-            <button className="entry" onClick={() => setOpen(open === p.id ? null : p.id)} aria-expanded={open === p.id}>
-              <Thumb src={p.image} />
-              <span style={{ minWidth: 0 }}>
-                <span className="title" style={{ display: "block" }}>
-                  {p.title}
-                </span>
-                <span className="small muted">
-                  {state.role === "payer" && p.memberName ? `${p.memberName} · ` : ""}
-                  {p.shop} · {when(p.createdAt)}
-                </span>
-              </span>
-              <span className="amount">
-                {dollars(p.amountCents)}
-                <span className={`small ${p.status}`} style={{ display: "block" }}>
-                  {statusLabel(p, state)}
-                </span>
-              </span>
-            </button>
-            {open === p.id && (
-              <div className="detail">
-                <p className="small" style={{ margin: 0 }}>
-                  <span className="muted">{p.memberName && state.role === "payer" ? `${p.memberName} asked:` : "You asked:"}</span>{" "}
-                  {p.request}
-                </p>
-                {p.why && (
-                  <p className="small" style={{ margin: "4px 0 0" }}>
-                    <span className="muted">Agent:</span> {p.why}
-                  </p>
+      {days.map((d) => (
+        <div key={d.label}>
+          <p className="day">{d.label}</p>
+          <ul className="plain ledger">
+            {d.items.map((p) => (
+              <li key={p.id}>
+                <button className="entry" onClick={() => setOpen(open === p.id ? null : p.id)} aria-expanded={open === p.id}>
+                  <Thumb src={p.image} />
+                  <span style={{ minWidth: 0 }}>
+                    <span className="title">{p.title}</span>
+                    <span className="meta">
+                      {state.role === "payer" && (
+                        <span className={p.memberName ? "avatar" : "avatar you"} aria-hidden>
+                          {initial(p.memberName ?? state.ownerName ?? "You")}
+                        </span>
+                      )}
+                      {state.role === "payer" ? `${p.memberName ?? "You"} · ` : ""}
+                      {p.shop}
+                    </span>
+                  </span>
+                  <span className="amount">
+                    {dollars(p.amountCents)}
+                    <span className={`small ${p.status}`} style={{ display: "block" }}>
+                      {statusLabel(p, state)}
+                    </span>
+                  </span>
+                </button>
+                {open === p.id && (
+                  <div className="detail">
+                    <p className="small" style={{ margin: 0 }}>
+                      <span className="muted">
+                        {p.memberName && state.role === "payer" ? `${p.memberName} asked:` : "You asked:"}
+                      </span>{" "}
+                      {p.request}
+                    </p>
+                    {p.why && (
+                      <p className="small" style={{ margin: "4px 0 0" }}>
+                        <span className="muted">Agent:</span> {p.why}
+                      </p>
+                    )}
+                    <Checks purchase={p} />
+                    {p.paypalOrderId && <p className="small muted">PayPal order {p.paypalOrderId}</p>}
+                    <Actions purchase={p} post={post} role={state.role} />
+                  </div>
                 )}
-                <Checks purchase={p} />
-                {p.paypalOrderId && <p className="small muted">PayPal order {p.paypalOrderId}</p>}
-                <Actions purchase={p} post={post} role={state.role} />
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-      {purchases.length > 5 && (
-        <button className="link" style={{ marginTop: 12 }} onClick={() => setAll(!all)}>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {purchases.length > 8 && (
+        <button className="link" style={{ margin: "12px 0 6px" }} onClick={() => setAll(!all)}>
           {all ? "Show fewer" : `Show all ${purchases.length}`}
         </button>
       )}
@@ -870,6 +1055,15 @@ function dollars(c: number) {
   return `$${(c / 100).toFixed(2)}`;
 }
 
-function when(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function initial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+function dayLabel(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 86_400_000);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
