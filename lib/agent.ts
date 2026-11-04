@@ -85,7 +85,7 @@ export async function runAgent(wallet: Wallet, request: string, emit: (e: AgentE
       asked = true;
 
       const outcome = await proposePurchase(
-        { wallet: ready, request, product, category, why: cleanLine(why, 400) },
+        { wallet: ready, request, product, category, maxPrice, why: cleanLine(why, 400) },
         { status: (text) => emit({ type: "status", text }) },
       );
       purchase = outcome.purchase;

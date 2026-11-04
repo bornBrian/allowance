@@ -54,6 +54,18 @@ describe("decide", () => {
     expect(d.reasons).toContain("$55.00 is over your $40.00 limit for gifts.");
   });
 
+  it("asks when the price is over what the person named in the request", () => {
+    // The gift rule allows $40, but they asked for something under $30.
+    const d = decide({ proposal: gift, checkout: sameAtCheckout, rules, history: [], now, requestMaxCents: 3000 });
+    expect(d.verdict).toBe("ask");
+    expect(d.reasons).toContain("You asked for up to $30.00; this is $32.00.");
+  });
+
+  it("pays when within the price named in the request", () => {
+    const d = decide({ proposal: gift, checkout: sameAtCheckout, rules, history: [], now, requestMaxCents: 3500 });
+    expect(d.verdict).toBe("pay");
+  });
+
   it("blocks when the price goes up at checkout", () => {
     const d = run({}, { priceCents: 3900 });
     expect(d.verdict).toBe("block");
