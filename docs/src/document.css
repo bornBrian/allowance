@@ -154,8 +154,8 @@ body {
   break-after: page;
 }
 
-/* The first chapter starts its own page already. */
-.front.toc {
+/* The last front section: the first chapter starts its own page already. */
+.front.last {
   break-after: auto;
 }
 
@@ -223,6 +223,11 @@ body {
   display: inline-block;
   min-width: 10mm;
   font-variant-numeric: tabular-nums;
+}
+
+.num.wide {
+  min-width: 0;
+  margin-right: 4mm;
 }
 
 .table-caption b,
@@ -338,17 +343,83 @@ td.tag {
   white-space: nowrap;
 }
 
-/* Requirement tables: the same columns everywhere. */
+/* Requirement tables: Id | Requirement | Acceptance criterion | Priority | Verification.
+   Widths are set on every cell, not just the header: a table continued on the
+   next page starts with a body row. */
 table.req {
   table-layout: fixed;
 }
-/* Widths on every cell, not just the header: a table continued on the next page has no header row first. */
-table.req :is(th, td):nth-child(1) { width: 14mm; }
-table.req :is(th, td):nth-child(3) { width: 15mm; }
-table.req :is(th, td):nth-child(4) { width: 13mm; }
-table.req :is(th, td):nth-child(5) { width: 15mm; }
-table.req td:nth-child(n + 3) {
+table.req :is(th, td):nth-child(1) { width: 17mm; }
+table.req :is(th, td):nth-child(3) { width: 62mm; }
+table.req :is(th, td):nth-child(4) { width: 14mm; }
+table.req :is(th, td):nth-child(5) { width: 11mm; }
+table.req td:nth-child(n + 4) {
   white-space: nowrap;
+}
+
+/* Key and value tables: use cases, document information. */
+table.spec {
+  table-layout: fixed;
+}
+table.spec :is(th, td):first-child {
+  width: 34mm;
+  color: var(--muted);
+  font-weight: 400;
+}
+table.spec td ol,
+table.spec td ul {
+  margin: 0;
+  padding-left: 4.5mm;
+}
+table.spec td li + li {
+  margin-top: 0.6mm;
+}
+
+/* Lists of figures and tables use the contents style. */
+.lof ol,
+.lot ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lof a,
+.lot a {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 0.8mm 0;
+  font-size: 9.5pt;
+}
+.lof a::after,
+.lot a::after {
+  content: target-counter(attr(href), page);
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lof a .leader,
+.lot a .leader {
+  flex: 1;
+  border-bottom: 0.5pt dotted var(--rule);
+  transform: translateY(-1mm);
+}
+
+table.trace td:first-child {
+  white-space: nowrap;
+}
+
+table.spec td ul.steps {
+  list-style: none;
+  padding-left: 0;
+}
+
+h4.sub {
+  font-size: 9.5pt;
+  font-weight: 600;
+  margin: 4mm 0 1.5mm;
+  break-after: avoid;
 }
 
 .caption {

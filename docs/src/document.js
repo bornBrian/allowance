@@ -10,6 +10,7 @@ window.PagedConfig = {
     const labels = new Map();
     const n = [0, 0, 0];
     let figures = 0;
+    let appendix = null;
     let tables = 0;
 
     for (const el of document.querySelectorAll("main h1, main h2, main h3, main figure, main .table-caption")) {
@@ -17,11 +18,15 @@ window.PagedConfig = {
         const level = Number(el.tagName[1]) - 1;
         n[level]++;
         n.fill(0, level + 1);
-        const num = n.slice(0, level + 1).join(".");
+        // Appendices are lettered: A, A.1, B ...
+        if (level === 0 && el.dataset.appendix) appendix = el.dataset.appendix;
+        if (level === 0 && !el.dataset.appendix) appendix = null;
+        const num = appendix ? [appendix, ...n.slice(1, level + 1)].join(".") : n.slice(0, level + 1).join(".");
         const title = el.textContent.trim();
         el.id ||= "s-" + num.replaceAll(".", "-");
-        el.insertAdjacentHTML("afterbegin", `<span class="num">${num}</span>`);
-        labels.set(el.id, `section ${num}`);
+        const shown = level === 0 && appendix ? `Appendix ${appendix}` : num;
+        el.insertAdjacentHTML("afterbegin", `<span class="num${shown === num ? "" : " wide"}">${shown}</span>`);
+        labels.set(el.id, level === 0 && appendix ? `appendix ${appendix}` : `section ${num}`);
         if (toc && level < 2) {
           const li = document.createElement("li");
           li.innerHTML = `<a href="#${el.id}"><span class="num">${num}</span>${el.dataset.toc ?? title}<span class="leader"></span></a>`;
@@ -40,6 +45,26 @@ window.PagedConfig = {
         tables++;
         el.insertAdjacentHTML("afterbegin", `<b>Table ${tables}.</b> `);
         if (el.id) labels.set(el.id, `Table ${tables}`);
+      }
+    }
+
+    // Lists of figures and tables, for documents that have them.
+    const lists = [
+      [".lof > ol", "main figure", (el) => el.querySelector("figcaption")],
+      [".lot > ol", "main .table-caption", (el) => el],
+    ];
+    for (const [where, what, captionOf] of lists) {
+      const list = document.querySelector(where);
+      if (!list) continue;
+      let i = 0;
+      for (const el of document.querySelectorAll(what)) {
+        i++;
+        el.id ||= `${what.includes("figure") ? "f" : "t"}-${i}`;
+        const caption = captionOf(el);
+        const text = caption.textContent.replace(/^(Figure|Table) \d+\.\s*/, "").split(". ")[0].replace(/\.$/, "");
+        const li = document.createElement("li");
+        li.innerHTML = `<a href="#${el.id}"><span class="num">${i}</span>${text}<span class="leader"></span></a>`;
+        list.append(li);
       }
     }
 
