@@ -132,11 +132,10 @@ export async function runAgent(actor: Actor, request: string, emit: (e: AgentEve
       reply = "I can't help with that request.";
       break;
     }
-    const text = message.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
+    // Only the last text block is the answer for the person; earlier ones are the
+    // model thinking aloud ("The person's rules say...") and shouldn't be shown.
+    const texts = message.content.filter((b) => b.type === "text");
+    const text = texts.length ? texts[texts.length - 1].text.trim() : "";
     if (text) reply = text;
   }
   emit({ type: "reply", text: reply || "Done." });
