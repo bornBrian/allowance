@@ -50,7 +50,7 @@ We deliberately don't hand the model PayPal tools (as the Agent Toolkit does). H
 
 ## Built with
 
-PayPal (Vault, Orders v2, Payments v2, JS SDK v6) · Claude Haiku 5.5 through the Anthropic SDK · Channel3 product search · Web Push for approvals · Next.js 16, React 19, TypeScript, SQLite built into Node 24 · hosted on Render.
+PayPal (Vault, Orders v2, Payments v2, JS SDK v6) · Claude Haiku 5.5 through the Anthropic SDK · Channel3 product search · Web Push for approvals · Next.js 16, React 19, TypeScript, SQLite built into Node 24, kept safe across restarts by Litestream copying every change to Backblaze B2 within a second · hosted on Render.
 
 The hosted demo is protected by rate limits, a daily and a lifetime cap on AI spending, a monthly cap on Channel3 calls, an optional Cloudflare Turnstile check, a strict Content Security Policy and same-origin checks on every write.
 
