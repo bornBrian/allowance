@@ -19,6 +19,7 @@ Give the agent an allowance, not the wallet.
 5. **A guard decides**, before any money moves:
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart LR
     A["Agent asks to buy<br/>one product"] --> G{"Guard<br/>(plain code)"}
     G -->|"every rule passes"| P["Pay<br/>with PayPal now"]
@@ -44,6 +45,7 @@ The common thread: a task worth delegating, and a limit the person can state in 
 Most "safe agent" ideas try to make the model behave. Allowance assumes the model will sometimes be wrong or be fooled, and puts the decision somewhere the model can't reach.
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart TB
     subgraph words ["Your words"]
         R["Rules, in plain language"]

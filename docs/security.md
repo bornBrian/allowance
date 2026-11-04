@@ -25,6 +25,7 @@ A web app where a person sets spending rules, links PayPal once, and asks an AI 
 ### Data flow and trust boundaries
 
 ```mermaid
+%%{init: {"theme": "neutral"}}%%
 flowchart LR
     subgraph internet ["Internet (untrusted)"]
         browser["Browser"]
