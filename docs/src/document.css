@@ -466,7 +466,7 @@ svg .on-dark { fill: #ffffff; }
 svg .name { font-size: 12px; font-weight: 600; }
 svg .detail { font-size: 10px; fill: #6e6e73; }
 svg .on-dark.detail { fill: #c7c7cc; }
-svg .label { font-size: 9.5px; fill: #3a3a3c; }
+svg .label { font-size: 9.5px; fill: #3a3a3c; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
 svg .band-label { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; fill: #6e6e73; }
 svg .line { fill: none; stroke: #1d1d1f; stroke-width: 1; }
 svg .line-soft { fill: none; stroke: #8e8e93; stroke-width: 1; stroke-dasharray: 3 3; }
