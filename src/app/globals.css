@@ -1835,3 +1835,36 @@ span.thumb {
 .stepper li button:hover {
   text-decoration: underline;
 }
+
+/* ---------- Over budget ---------- */
+
+.pot.over .pot-head span:last-child {
+  color: #ffb4a8;
+  font-weight: 600;
+}
+
+.pot.over .track i {
+  width: 100% !important;
+  background: #ff8a7a;
+}
+
+.balance .big.over {
+  color: #ffb4a8;
+}
+
+.over-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--red-wash);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.outcome .over-warn {
+  margin: 10px auto 0;
+  max-width: 320px;
+  text-align: center;
+}

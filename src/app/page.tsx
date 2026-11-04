@@ -277,7 +277,7 @@ function PayerHome({
           </div>
           <div className="ok-row">
             {waiting.map((p) => (
-              <OkCard key={p.id} purchase={p} post={post} open={() => open(p.id)} />
+              <OkCard key={p.id} purchase={p} state={state} post={post} open={() => open(p.id)} />
             ))}
           </div>
         </>
@@ -361,8 +361,9 @@ function AskBox({
 
 // A request waiting for the payer, as a product card.
 // Tapping the photo or the name opens the request in full: why it was asked, and every check.
-function OkCard({ purchase: p, post, open }: { purchase: Purchase; post: Post; open: () => void }) {
+function OkCard({ purchase: p, state, post, open }: { purchase: Purchase; state: AppState; post: Post; open: () => void }) {
   const why = p.checks.find((c) => c.outcome === "ask")?.detail;
+  const over = overBudget(state, p);
   return (
     <article className="ok">
       <button className="photo" onClick={open} aria-label={`Details of ${p.title}`}>
@@ -381,8 +382,9 @@ function OkCard({ purchase: p, post, open }: { purchase: Purchase; post: Post; o
           <span className="price">{dollars(p.amountCents)}</span>
         </div>
         {why && <p className="why">{why}</p>}
+        {over && <OverWarning over={over} state={state} />}
         <div className="actions">
-          <Actions purchase={p} post={post} role="payer" />
+          <Actions purchase={p} post={post} role="payer" anyway={Boolean(over)} />
         </div>
       </div>
     </article>
@@ -394,14 +396,14 @@ function Pots({ state }: { state: AppState }) {
   return (
     <div className="pots">
       {state.remaining.map((r) => {
-        const left = Math.max(0, r.budgetCents - r.spentCents);
+        const left = r.budgetCents - r.spentCents;
         const used = r.budgetCents ? Math.min(1, r.spentCents / r.budgetCents) : 0;
         return (
-          <div key={r.label}>
+          <div key={r.label} className={left < 0 ? "pot over" : "pot"}>
             <div className="pot-head">
               <span>{r.label}</span>
               <span>
-                {dollars(left)} left this {r.period}
+                {left < 0 ? `${dollars(-left)} over this ${r.period}` : `${dollars(left)} left this ${r.period}`}
               </span>
             </div>
             <div className="track" aria-hidden>
@@ -693,14 +695,26 @@ function MemberHome({
 
       {first && (
         <section className="balance">
-          <div>
-            <p className="k">
-              {first.label} left this {first.period}
-            </p>
-            <p className="big">
-              <Money cents={Math.max(0, first.budgetCents - first.spentCents)} />
-            </p>
-          </div>
+          {first.budgetCents - first.spentCents < 0 ? (
+            <div>
+              <p className="k">
+                {first.label} this {first.period}
+              </p>
+              <p className="big over">
+                −<Money cents={first.spentCents - first.budgetCents} />
+              </p>
+              <p className="k2">Over the allowance. {state.ownerName ?? "They"} approved the extra.</p>
+            </div>
+          ) : (
+            <div>
+              <p className="k">
+                {first.label} left this {first.period}
+              </p>
+              <p className="big">
+                <Money cents={first.budgetCents - first.spentCents} />
+              </p>
+            </div>
+          )}
           {others.length > 0 && <Pots state={{ ...state, remaining: others }} />}
         </section>
       )}
@@ -906,6 +920,7 @@ function Outcome({ purchase: p, state, post }: { purchase: Purchase; state: AppS
     failed: ["x", "Not paid", "PayPal didn't take the payment."],
   };
   const [icon, title, sub] = view[p.status];
+  const over = overBudget(state, p);
 
   return (
     <div className={`outcome is-${p.status}`}>
@@ -915,6 +930,7 @@ function Outcome({ purchase: p, state, post }: { purchase: Purchase; state: AppS
         </div>
         <h3>{title}</h3>
         {sub && <p className="sub">{sub}</p>}
+        {p.status === "waiting" && over && <OverWarning over={over} state={state} />}
       </div>
       <div className="item-line">
         <Thumb src={p.image} />
@@ -943,7 +959,7 @@ function Outcome({ purchase: p, state, post }: { purchase: Purchase; state: AppS
         )}
       </div>
       <div className="actions">
-        <Actions purchase={p} post={post} role={state.role} />
+        <Actions purchase={p} post={post} role={state.role} anyway={Boolean(over)} />
       </div>
       <Checks purchase={p} />
     </div>
@@ -974,7 +990,17 @@ function Checks({ purchase }: { purchase: Purchase }) {
   );
 }
 
-function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; role: AppState["role"] }) {
+function Actions({
+  purchase,
+  post,
+  role,
+  anyway = false,
+}: {
+  purchase: Purchase;
+  post: Post;
+  role: AppState["role"];
+  anyway?: boolean; // approving takes a budget past its limit
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = async (action: string) => {
@@ -1000,7 +1026,7 @@ function Actions({ purchase, post, role }: { purchase: Purchase; post: Post; rol
     buttons = (
       <div className="pair">
         <button onClick={() => act("approve")} disabled={busy}>
-          Approve
+          {anyway ? "Approve anyway" : "Approve"}
         </button>
         <button className="ghost" onClick={() => act("decline")} disabled={busy}>
           Decline
@@ -1224,6 +1250,35 @@ function PayPalLink({ state, onLinked }: { state: AppState; onLinked: (s: AppSta
       )}
       {error && <p className="error">{error}</p>}
     </>
+  );
+}
+
+// ---------- Over budget ----------
+
+interface Over {
+  label: string;
+  period: string;
+  budgetCents: number;
+  overCents: number;
+}
+
+// How far approving a waiting purchase would take a budget past its limit, if it would.
+function overBudget(state: AppState, p: Purchase): Over | null {
+  for (const r of state.remaining) {
+    if (r.label.toLowerCase() !== p.category.toLowerCase() && r.label !== "In total") continue;
+    const over = r.spentCents + p.amountCents - r.budgetCents;
+    if (over > 0) return { label: r.label, period: r.period, budgetCents: r.budgetCents, overCents: over };
+  }
+  return null;
+}
+
+function OverWarning({ over, state }: { over: Over; state: AppState }) {
+  return (
+    <p className="over-warn">
+      {state.role === "payer"
+        ? `Approving puts ${over.label} ${dollars(over.overCents)} over this ${over.period}'s ${dollars(over.budgetCents)}.`
+        : `That's ${dollars(over.overCents)} more than is left for ${over.label.toLowerCase()} this ${over.period}.`}
+    </p>
   );
 }
 
