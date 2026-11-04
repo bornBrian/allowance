@@ -69,13 +69,12 @@ The hosted demo has a daily cap on what it spends on Claude (`DAILY_AI_BUDGET_US
 
 ## Documentation
 
-| | |
+| Document | Standard |
 | --- | --- |
-| [Concept](docs/concept.md) | The problem, who it's for, and the thinking behind the design |
-| [Architecture](docs/architecture.md) | arc42 with C4 diagrams, runtime flows, data model, purchase lifecycle |
-| [Decisions](docs/decisions/README.md) | Eight architecture decision records |
-| [Security](docs/security.md) | STRIDE threat model, mapped to the OWASP web, LLM and agentic Top 10s |
-| [Testing](docs/testing.md) | Test plan (ISO/IEC/IEEE 29119-3 structure), traceability, sandbox results |
+| [Software Requirements Specification](docs/srs.pdf): 8 use cases, 85 requirements with acceptance criteria, 19 business rules, traceability | ISO/IEC/IEEE 29148 |
+| [Software Architecture Document](docs/sad.pdf): context, containers, layers, runtime flows, data, concurrency, deployment, security, decisions | ISO/IEC/IEEE 42010 |
+
+More documents and the working notes are listed in [docs/](docs/README.md).
 
 ## Run it locally
 
