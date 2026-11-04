@@ -284,6 +284,14 @@ export function claimStatus(id: string, from: Status, to: Status): boolean {
   return conn().prepare("UPDATE purchases SET status = ? WHERE id = ? AND status = ?").run(to, id, from).changes === 1;
 }
 
+export function healthy(): boolean {
+  try {
+    return conn().prepare("SELECT 1 AS ok").get() !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 // Daily cap on what the hosted demo spends on Claude.
 export function aiSpentToday(): number {
   const row = conn().prepare("SELECT micro_usd FROM ai_spend WHERE day = ?").get(today()) as unknown as
