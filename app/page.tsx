@@ -8,6 +8,7 @@ import type { AppState } from "@/lib/state";
 import { EXAMPLE_RULES_TEXT } from "@/lib/rules";
 import { HumanCheck } from "./human-check";
 import { LinkPayPal } from "./link-paypal";
+import { Speak } from "./speak";
 
 export default function Home() {
   const [state, setState] = useState<AppState | null>(null);
@@ -101,12 +102,13 @@ function Rules({ state, post }: { state: AppState; post: Post }) {
   return (
     <section>
       <h2>Rules</h2>
-      <p className="lead">Tell the agent what it may spend, in your own words.</p>
+      <p className="lead">Tell the agent what it may spend, in your own words. Type it or say it.</p>
       <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Your spending rules" />
       <div className="row">
         <button onClick={save} disabled={busy || !changed}>
           {busy ? "Saving…" : state.rulesText ? "Update rules" : "Save rules"}
         </button>
+        <Speak value={text} onChange={setText} disabled={busy} />
       </div>
       {error && <p className="error">{error}</p>}
 
@@ -250,6 +252,7 @@ function Ask({ state, post, refresh }: { state: AppState; post: Post; refresh: (
           <button type="submit" disabled={!ready || busy || !request.trim()}>
             {busy ? "Working…" : "Ask"}
           </button>
+          <Speak value={request} onChange={setRequest} disabled={!ready || busy} />
         </div>
       </form>
       {error && <p className="error">{error}</p>}
