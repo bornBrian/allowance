@@ -17,24 +17,24 @@
     "docs": "node scripts/build-docs.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.4.0",
-    "@channel3/sdk": "^4.6.0",
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@channel3/sdk": "^4.8.0",
     "@paypal/paypal-server-sdk": "^2.5.0",
     "@paypal/react-paypal-js": "^10.6.1",
-    "next": "^16.4.4",
+    "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "server-only": "^0.0.1",
-    "web-push": "3.6.7",
+    "web-push": "4.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/web-push": "3.6.4",
     "pagedjs": "0.4.3",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.12"
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
   }
 }
